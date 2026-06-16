@@ -375,14 +375,16 @@ router.get("/operaciones/tablero", async (req, res) => {
           cs.puesto_id,
           cs.employee_id       AS relevo_id,
           cs.empleado_nombre   AS relevo_nombre,
-          cs.tipo_cobertura
+          cs.tipo_cobertura,
+          cs.es_externo,
+          cs.externo_dpi
         FROM cobertura_segmentos cs
         WHERE cs.fecha = $1::date
           AND cs.tipo_cobertura IN ('relevo','cobertura_supervisor','cobertura_jefe_servicio')
         ORDER BY cs.puesto_id, cs.created_at DESC
       `, [fechaConsultada]);
 
-      const coberturaMap = new Map<number, { relevo_id: number; relevo_nombre: string; tipo_cobertura: string }>();
+      const coberturaMap = new Map<number, { relevo_id: number | null; relevo_nombre: string; tipo_cobertura: string; es_externo?: boolean; externo_dpi?: string | null }>();
       for (const c of coberturas) coberturaMap.set(Number(c.puesto_id), c);
 
       for (const p of puestosFinales) {
@@ -394,6 +396,8 @@ router.get("/operaciones/tablero", async (req, res) => {
             (p as any).agente_id     = override.relevo_id;
             (p as any).agente_nombre = override.relevo_nombre;
             (p as any).es_relevo_dia = true;
+            (p as any).es_externo    = Boolean(override.es_externo);
+            (p as any).externo_dpi   = override.externo_dpi ?? null;
             (p as any).estado        = "cubierto"; // forzar cubierto para el frontend
           } else {
             (p as any).agente_id     = p.par_trabajando.employee_id;
@@ -410,6 +414,8 @@ router.get("/operaciones/tablero", async (req, res) => {
           (p as any).agente_id     = override.relevo_id;
           (p as any).agente_nombre = override.relevo_nombre;
           (p as any).es_relevo_dia = true;
+          (p as any).es_externo    = Boolean(override.es_externo);
+          (p as any).externo_dpi   = override.externo_dpi ?? null;
           (p as any).estado        = "cubierto"; // forzar cubierto para el frontend
         }
         // Si es puesto normal sin override: agente_id ya viene de puestos_operativos (titular)
@@ -664,9 +670,10 @@ router.get("/operaciones/tablero", async (req, res) => {
       if (N <= 0) continue;
 
       const { rows: asignaciones } = await pool.query(`
-        SELECT cad.employee_id, cad.slot_numero, cad.notas, e.nombre_completo
+        SELECT cad.employee_id, cad.slot_numero, cad.notas, e.nombre_completo,
+               cad.es_externo, cad.externo_nombre, cad.externo_dpi
         FROM custodia_asignacion_diaria cad
-        JOIN employees e ON e.id = cad.employee_id
+        LEFT JOIN employees e ON e.id = cad.employee_id
         WHERE cad.cliente_id = $1 AND cad.fecha = $2::date
         ORDER BY cad.slot_numero
       `, [cl.id, fechaConsultada]);
@@ -700,11 +707,19 @@ router.get("/operaciones/tablero", async (req, res) => {
         let es_relevo_dia = false;
 
         if (asig) {
-          agente_id = asig.employee_id;
-          agente_nombre = asig.nombre_completo;
-          estado = "cubierto";
-          if (titular && asig.employee_id !== titular.employee_id) {
-            es_relevo_dia = true;
+          if (asig.es_externo) {
+            // Cobertura por agente externo (no es empleado): employee_id NULL.
+            agente_id = null;
+            agente_nombre = asig.externo_nombre;
+            estado = "cubierto";
+            es_relevo_dia = !!titular;
+          } else {
+            agente_id = asig.employee_id;
+            agente_nombre = asig.nombre_completo;
+            estado = "cubierto";
+            if (titular && asig.employee_id !== titular.employee_id) {
+              es_relevo_dia = true;
+            }
           }
         } else if (titular && !titularFaltando && !enDescansoExcedente) {
           agente_id = titular.employee_id;
@@ -723,6 +738,8 @@ router.get("/operaciones/tablero", async (req, res) => {
           estado,
           agente_id,
           agente_nombre,
+          es_externo: asig?.es_externo ?? false,
+          externo_dpi: asig?.externo_dpi ?? null,
           notas_custodia: asig?.notas ?? null,
           titular_employee_id: titular?.employee_id ?? null,
           titular_nombre: titular?.nombre ?? null,

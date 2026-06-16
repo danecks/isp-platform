@@ -62,6 +62,7 @@ export function useAssignmentFlow({
   const [modalQuitarTitular, setModalQuitarTitular] = useState<{ puesto: Puesto; employeeId: number; employeeNombre: string } | null>(null);
   const [modalAnularFalta, setModalAnularFalta] = useState<{ puesto: Puesto; titularNombre: string } | null>(null);
   const [modalReactivarFalta, setModalReactivarFalta] = useState<{ puesto: Puesto; titularNombre: string } | null>(null);
+  const [modalAgenteExterno, setModalAgenteExterno] = useState<Puesto | null>(null);
 
   function esAgentePool(agente: Agente) {
     const eoa = agente.tipo_asignacion_eoa ?? "sin_asignacion";
@@ -650,7 +651,45 @@ export function useAssignmentFlow({
     }
   }
 
+  // Cobertura por AGENTE EXTERNO: cubre un puesto descubierto (guardia o custodia)
+  // sin ser empleado. Se paga su HE en EFECTIVO por turno, FUERA de planilla.
+  async function confirmarAgenteExterno(externoNombre: string, externoDpi: string, jornada?: string) {
+    if (!modalAgenteExterno) return;
+    const p = modalAgenteExterno;
+    try {
+      const body: any = {
+        externoNombre,
+        externoDpi,
+        usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
+        fecha: fechaVista || undefined,
+      };
+      if (p.es_custodia) {
+        body.esCustodia = true;
+        body.clienteId = p.cliente_id;
+        body.slotNumero = p.slot_numero;
+      } else {
+        body.puestoId = p.id;
+        if (jornada) body.jornada = jornada;
+      }
+      const resp = await apiPost(`${API_BASE}/operaciones/cubrir-externo`, body);
+      toast({
+        title: "Cobertura registrada",
+        description: resp?.mensaje ?? `${externoNombre} (externo) cubre ${p.nombre} — HE en efectivo, fuera de planilla`,
+      });
+      setModalAgenteExterno(null);
+      invalidate();
+    } catch (e: any) {
+      toast({
+        title: "No se pudo cubrir",
+        description: e?.error ?? "No se pudo registrar la cobertura por agente externo.",
+        variant: "destructive",
+      });
+    }
+  }
+
   return {
+    modalAgenteExterno, setModalAgenteExterno,
+    confirmarAgenteExterno,
     modalSustitucion, setModalSustitucion,
     modalEligeCobertura, setModalEligeCobertura,
     modalCustodiaTipo, setModalCustodiaTipo,

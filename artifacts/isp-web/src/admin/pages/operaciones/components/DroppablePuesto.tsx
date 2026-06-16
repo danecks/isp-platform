@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { AlertTriangle, CheckCircle2, User, Shield, Circle, UserMinus, XCircle, Calendar, AlertCircle, Layers, Moon, Settings2, Repeat, Undo2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, User, UserPlus, Shield, Circle, UserMinus, XCircle, Calendar, AlertCircle, Layers, Moon, Settings2, Repeat, Undo2 } from "lucide-react";
 import { ModalFichaArma } from "@/admin/components/ModalFichaArma";
 import { iniciales, avatarColor } from "../utils";
 import { Puesto, PlanFuturo, LABELS_AUSENCIA_FUTURO } from "../types";
@@ -16,6 +16,7 @@ export function DroppablePuesto({
   onAbrirSegmentos,
   onConfigTurno,
   onQuitarTitular,
+  onAgenteExterno,
   cambiosProximos,
   puestoContextoId,
   planFuturo,
@@ -30,13 +31,15 @@ export function DroppablePuesto({
   onAbrirSegmentos: () => void;
   onConfigTurno?: () => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
+  onAgenteExterno?: (puesto: Puesto) => void;
   cambiosProximos?: PlanFuturo[];
   puestoContextoId?: number | null;
   planFuturo?: PlanFuturo | null;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
   const [fichaArmaId, setFichaArmaId] = useState<number | null>(null);
-  const cubierto       = puesto.estado === "cubierto" && puesto.agente_id;
+  const esExterno      = (puesto as any).es_externo === true;
+  const cubierto       = puesto.estado === "cubierto" && (puesto.agente_id || esExterno);
   const esRelevo       = cubierto && puesto.titular_employee_id && puesto.agente_id !== puesto.titular_employee_id;
   const titularAusente = !puesto.agente_id && !!puesto.titular_employee_id;
   const descansoCiclo  = !cubierto && (puesto.descanso_por_ciclo === true);
@@ -61,7 +64,7 @@ export function DroppablePuesto({
     // si el titular que toca trabajar hoy está de vacaciones o fue dado de baja, el slot
     // queda DESCUBIERTO aunque el ciclo diga "trabaja_hoy". El backend ya marca
     // estado='descubierto' y nullea agente_id; aquí lo respetamos en la UI.
-    const cubiertoManual  = puesto.estado === "cubierto" && !!puesto.agente_id && !esTitularCiclo;
+    const cubiertoManual  = puesto.estado === "cubierto" && (!!puesto.agente_id || esExterno) && !esTitularCiclo;
     const cubiertoTitular = !cubiertoManual
       && activo.trabaja_hoy
       && !!activo.employee_id
@@ -186,6 +189,15 @@ export function DroppablePuesto({
                   <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Sin cobertura"}</p>
                 </div>
               ) : null}
+              {onAgenteExterno && activoSinCob && (
+                <button
+                  onClick={e => { e.stopPropagation(); onAgenteExterno(puesto); }}
+                  className="mt-1.5 flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-teal-300/80 bg-teal-500/10 border border-teal-500/25 hover:bg-teal-500/20 hover:text-teal-300 rounded-md transition-colors"
+                  title="Cubrir con agente externo — HE pagada en efectivo, fuera de planilla"
+                >
+                  <UserPlus className="w-3 h-3" /><span>Agente externo</span>
+                </button>
+              )}
             </div>
 
             {/* ── SIEMPRE VISIBLE: Arma + Tramo + Faltante ── */}
@@ -456,6 +468,15 @@ export function DroppablePuesto({
                 <User className="w-4 h-4 shrink-0" />
                 <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Puesto descubierto"}</p>
               </div>
+            )}
+            {onAgenteExterno && !cubierto && !descansoCiclo && (
+              <button
+                onClick={e => { e.stopPropagation(); onAgenteExterno(puesto); }}
+                className="mt-1.5 flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-teal-300/80 bg-teal-500/10 border border-teal-500/25 hover:bg-teal-500/20 hover:text-teal-300 rounded-md transition-colors"
+                title="Cubrir con agente externo — HE pagada en efectivo, fuera de planilla"
+              >
+                <UserPlus className="w-3 h-3" /><span>Agente externo</span>
+              </button>
             )}
           </div>
 

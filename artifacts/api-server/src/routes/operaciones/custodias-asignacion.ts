@@ -333,6 +333,9 @@ router.get("/custodias/puestos", async (req, res) => {
         p.titular_nombre,
         p.notas,
         p.activo,
+        ext.empleado_nombre                 AS externo_nombre,
+        ext.externo_dpi                     AS externo_dpi,
+        (ext.empleado_nombre IS NOT NULL)   AS cubierto_externo,
         oz.nombre                           AS zona_nombre,
         cs.nombre                           AS sede_nombre,
         t.nombre                            AS turno_tipo_nombre,
@@ -356,6 +359,13 @@ router.get("/custodias/puestos", async (req, res) => {
             WHERE i.puesto_id = p.id
               AND i.estado IN ('abierta','en_proceso')
           ) THEN 'incidente_completado'
+          -- Cobertura por AGENTE EXTERNO hoy → en ruta (puesto cubierto por externo)
+          WHEN EXISTS (
+            SELECT 1 FROM cobertura_segmentos seg
+            WHERE seg.puesto_id = p.id
+              AND seg.fecha     = CURRENT_DATE
+              AND seg.es_externo = TRUE
+          ) THEN 'en_ruta'
           -- Agente tiene segmento abierto HOY y dentro de la ventana esperada de horas
           WHEN p.agente_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM cobertura_segmentos seg
@@ -402,6 +412,15 @@ router.get("/custodias/puestos", async (req, res) => {
       LEFT JOIN operational_zones oz ON oz.id = p.zona_operativa_id
       LEFT JOIN client_sedes     cs ON cs.id = p.sede_id
       LEFT JOIN turnos            t  ON t.id  = p.tipo_turno_id
+      LEFT JOIN LATERAL (
+        SELECT seg.empleado_nombre, seg.externo_dpi
+        FROM cobertura_segmentos seg
+        WHERE seg.puesto_id = p.id
+          AND seg.fecha     = CURRENT_DATE
+          AND seg.es_externo = TRUE
+        ORDER BY seg.created_at DESC
+        LIMIT 1
+      ) ext ON TRUE
       WHERE p.tipo_puesto = 'custodia'
         AND p.activo      = TRUE
       ORDER BY

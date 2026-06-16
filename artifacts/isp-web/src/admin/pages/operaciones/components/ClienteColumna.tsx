@@ -18,6 +18,7 @@ export function ClienteColumna({
   onConfigTurno,
   onQuitarTitular,
   onRegistrarRuta,
+  onAgenteExterno,
   cambiosFuturosProximos,
   planFuturoPorPuesto,
   resaltado,
@@ -38,6 +39,7 @@ export function ClienteColumna({
   onConfigTurno?: (puesto: Puesto) => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
   onRegistrarRuta?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
+  onAgenteExterno?: (puesto: Puesto) => void;
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
   planFuturoPorPuesto?: Record<number, PlanFuturo>;
   resaltado?: boolean;
@@ -66,7 +68,7 @@ export function ClienteColumna({
   // Cobertura por titular del ciclo (24x24 sin agente_id) solo cuenta si el
   // titular activo NO está en vacaciones / dado de baja / faltando.
   const esPuestoCubierto = (p: typeof cliente.puestos[0]) => {
-    const cubiertoManual  = p.estado === "cubierto" && !!p.agente_id;
+    const cubiertoManual  = p.estado === "cubierto" && (!!p.agente_id || (p as any).es_externo === true);
     const cubiertoTitular = p.es_par_24x24
       && (p.par_trabajando as any)?.trabaja_hoy
       && (p.par_trabajando as any)?.employee_id
@@ -190,6 +192,7 @@ export function ClienteColumna({
             onRegistrarFalta={onRegistrarFalta}
             onQuitarTitular={onQuitarTitular}
             onRegistrarRuta={onRegistrarRuta}
+            onAgenteExterno={onAgenteExterno}
           />
         )}
         {puestosRegulares.map((p) => (
@@ -205,6 +208,7 @@ export function ClienteColumna({
               onAbrirSegmentos={() => onAbrirSegmentos(p)}
               onConfigTurno={onConfigTurno ? () => onConfigTurno(p) : undefined}
               onQuitarTitular={onQuitarTitular}
+              onAgenteExterno={onAgenteExterno}
               cambiosProximos={cambiosFuturosProximos?.[p.id]}
               planFuturo={planFuturoPorPuesto?.[p.id] ?? null}
               puestoContextoId={puestoContextoId}

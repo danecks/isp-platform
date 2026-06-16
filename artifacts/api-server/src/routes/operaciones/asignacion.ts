@@ -451,6 +451,210 @@ router.post("/operaciones/asignar", async (req, res) => {
   }
 });
 
+// ─── POST /api/operaciones/cubrir-externo ────────────────────────────────────
+// Cubre un puesto descubierto con un AGENTE EXTERNO (NO es empleado de planilla).
+// Se captura nombre + DPI; la cobertura es por el día. Se le paga la HE en EFECTIVO
+// segun el turno del puesto (12h→Q150, 24h→Q300) registrada a su nombre+DPI en
+// incentivos_cash_cobertura, FUERA de la planilla legal (employee_id = NULL).
+// Opción A: NO genera amonestación. La falta del titular se registra aparte
+// (registrar-falta) y RRHH genera la económica + acta a mano.
+router.post("/operaciones/cubrir-externo", async (req, res) => {
+  const { puestoId, clienteId, slotNumero, esCustodia: esCustodiaBody, externoNombre, externoDpi, jornada: jornadaBody, usuario, fecha } = req.body;
+  const esCustodia = !!esCustodiaBody || (clienteId != null && slotNumero != null && !puestoId);
+  if (!externoNombre || !externoDpi) {
+    return res.status(400).json({ error: "externoNombre y externoDpi son requeridos" });
+  }
+  if (esCustodia) {
+    if (!clienteId || !slotNumero) {
+      return res.status(400).json({ error: "clienteId y slotNumero son requeridos para custodia" });
+    }
+  } else if (!puestoId) {
+    return res.status(400).json({ error: "puestoId es requerido" });
+  }
+  const nombreLimpio = String(externoNombre).trim();
+  const dpiLimpio = String(externoDpi).trim();
+  if (!nombreLimpio || !dpiLimpio) {
+    return res.status(400).json({ error: "El nombre y el DPI del agente externo no pueden ir vacíos" });
+  }
+  const hoy = (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) ? fecha : todayGT();
+
+  try {
+    if (await verificarDiaCerrado()) {
+      return res.status(423).json({ error: "Día operativo cerrado. Reabre el día para continuar.", diaCerrado: true });
+    }
+
+    // ── Rama CUSTODIA: modelo cliente+slot (custodia_asignacion_diaria) ──
+    if (esCustodia) {
+      const { rows: cliRows } = await pool.query(
+        `SELECT id, nombre, nombre_comercial FROM clients WHERE id = $1`, [clienteId]
+      );
+      if (!cliRows.length) return res.status(404).json({ error: "Cliente no encontrado" });
+      const clienteNombre = cliRows[0].nombre_comercial || cliRows[0].nombre;
+
+      // Custodios son jornada fija de 12h.
+      const jornadaC = "12h";
+      const { rows: tarRowsC } = await pool.query(
+        `SELECT tarifa FROM config_tarifa_he WHERE jornada = $1 LIMIT 1`, [jornadaC]
+      );
+      const tarifaC = tarRowsC[0]?.tarifa != null ? Number(tarRowsC[0].tarifa) : 150;
+
+      // Anti doble-pago: una sola HE externa por custodio/fecha (sin importar el DPI). Si ya hay un
+      // pago externo YA PROCESADO (no 'pendiente'), bloquear; si está 'pendiente' se reemplaza en la tx.
+      const { rows: pagoPrevioC } = await pool.query(
+        `SELECT estado FROM incentivos_cash_cobertura
+         WHERE es_externo = TRUE AND tipo = 'he_efectivo' AND fecha = $1::date
+           AND cliente_id = $2 AND puesto_nombre = $3
+         LIMIT 1`, [hoy, clienteId, `Custodio ${slotNumero}`]
+      );
+      if (pagoPrevioC.length > 0 && pagoPrevioC[0].estado !== "pendiente") {
+        return res.status(409).json({ error: "Este custodio ya tiene una HE externa pagada/procesada hoy; no se puede registrar otra cobertura externa" });
+      }
+
+      const txC = await pool.connect();
+      try {
+        await txC.query("BEGIN");
+        // 1) Cobertura del día (employee_id NULL, marcada externa).
+        await txC.query(
+          `INSERT INTO custodia_asignacion_diaria
+             (cliente_id, fecha, employee_id, slot_numero, es_externo, externo_nombre, externo_dpi, notas)
+           VALUES ($1, $2::date, NULL, $3, TRUE, $4, $5, $6)
+           ON CONFLICT (cliente_id, fecha, slot_numero)
+           DO UPDATE SET employee_id = NULL, es_externo = TRUE,
+             externo_nombre = EXCLUDED.externo_nombre, externo_dpi = EXCLUDED.externo_dpi,
+             notas = EXCLUDED.notas`,
+          [clienteId, hoy, slotNumero, nombreLimpio, dpiLimpio,
+           `Cobertura por agente externo (DPI ${dpiLimpio}) — HE pagada en efectivo, fuera de planilla`]
+        );
+
+        // Idempotencia anti doble-pago: limpiar pago externo PENDIENTE previo del mismo
+        // custodio/fecha antes de reinsertar (cambio de DPI, re-cobertura o doble click).
+        await txC.query(
+          `DELETE FROM incentivos_cash_cobertura
+           WHERE es_externo = TRUE AND tipo = 'he_efectivo' AND estado = 'pendiente'
+             AND fecha = $1::date AND cliente_id = $2 AND puesto_nombre = $3`,
+          [hoy, clienteId, `Custodio ${slotNumero}`]
+        );
+
+        // 2) Pago de HE en EFECTIVO del externo (fuera de planilla legal).
+        await txC.query(
+          `INSERT INTO incentivos_cash_cobertura
+             (employee_id, employee_nombre, es_externo, externo_dpi, fecha,
+              cliente_id, cliente_nombre, puesto_id, puesto_nombre, segmento_id,
+              tipo, monto, motivo, autorizado_por, metodo_pago, estado)
+           VALUES (NULL, $1, TRUE, $2, $3::date, $4, $5, NULL, $6, NULL,
+                   'he_efectivo', $7, $8, $9, 'efectivo', 'pendiente')`,
+          [nombreLimpio, dpiLimpio, hoy, clienteId, clienteNombre,
+           `Custodio ${slotNumero}`, tarifaC, `HE agente externo — custodio ${jornadaC}`, usuario ?? null]
+        );
+
+        await txC.query("COMMIT");
+        logger.info({ clienteId, slotNumero, dpi: dpiLimpio, tarifa: tarifaC, hoy }, "Cobertura custodia por agente externo registrada (HE efectivo, fuera de planilla)");
+        return res.status(201).json({
+          ok: true,
+          mensaje: `${nombreLimpio} (externo) cubre Custodio ${slotNumero} — HE en efectivo Q${tarifaC.toFixed(2)}`,
+          jornada: jornadaC, monto: tarifaC,
+        });
+      } catch (txErr) {
+        await txC.query("ROLLBACK").catch(() => {});
+        throw txErr;
+      } finally {
+        txC.release();
+      }
+    }
+
+    const { rows: puestoRows } = await pool.query(`SELECT * FROM puestos_operativos WHERE id=$1`, [puestoId]);
+    if (!puestoRows.length) return res.status(404).json({ error: "Puesto no encontrado" });
+    const puesto = puestoRows[0];
+
+    // Resolver jornada AUTORITATIVAMENTE desde el puesto (no confiar en el body para evitar
+    // drift/manipulación del monto). Misma regla que el frontend: 24h si es par 24x24 o la
+    // jornada/turno indica 24; si no, 12h. El body solo es último recurso.
+    const jornadaRaw = String(puesto.jornada ?? puesto.turno_nombre ?? puesto.turno ?? jornadaBody ?? "");
+    const jornada = (puesto.es_par_24x24 === true || /24/.test(jornadaRaw)) ? "24h" : "12h";
+
+    // Tarifa fija de HE por turno (config_tarifa_he): 12h→Q150, 24h→Q300.
+    const { rows: tarRows } = await pool.query(
+      `SELECT tarifa, horas_turno FROM config_tarifa_he WHERE jornada = $1 LIMIT 1`, [jornada]
+    );
+    const tarifa = tarRows[0]?.tarifa != null ? Number(tarRows[0].tarifa) : (jornada === "24h" ? 300 : 150);
+    const horasTurno = tarRows[0]?.horas_turno != null ? Number(tarRows[0].horas_turno) : (jornada === "24h" ? 24 : 12);
+
+    // Anti doble-pago: una sola HE externa por puesto/fecha (sin importar el DPI). Si ya hay un
+    // pago externo YA PROCESADO (no 'pendiente'), bloquear; si está 'pendiente' se reemplaza en la tx.
+    const { rows: pagoPrevio } = await pool.query(
+      `SELECT estado FROM incentivos_cash_cobertura
+       WHERE es_externo = TRUE AND tipo = 'he_efectivo' AND fecha = $1::date AND puesto_id = $2
+       LIMIT 1`, [hoy, puestoId]
+    );
+    if (pagoPrevio.length > 0 && pagoPrevio[0].estado !== "pendiente") {
+      return res.status(409).json({ error: "Este puesto ya tiene una HE externa pagada/procesada hoy; no se puede registrar otra cobertura externa" });
+    }
+
+    const tx = await pool.connect();
+    try {
+      await tx.query("BEGIN");
+
+      // Idempotencia anti doble-pago: limpiar cobertura/pago externo PENDIENTE previo del
+      // mismo puesto/fecha antes de reinsertar (re-cobertura, cambio de DPI o doble click).
+      await tx.query(
+        `DELETE FROM cobertura_segmentos
+         WHERE fecha = $1::date AND puesto_id = $2 AND es_externo = TRUE AND usuario_registro = 'cubrir_externo'`,
+        [hoy, puestoId]
+      );
+      await tx.query(
+        `DELETE FROM incentivos_cash_cobertura
+         WHERE es_externo = TRUE AND tipo = 'he_efectivo' AND estado = 'pendiente'
+           AND fecha = $1::date AND puesto_id = $2`,
+        [hoy, puestoId]
+      );
+
+      // 1) Cobertura del día en cobertura_segmentos (employee_id NULL, marcada externa).
+      //    El tablero la lee como relevo → el puesto se muestra cubierto con el nombre del externo.
+      const { rows: segRows } = await tx.query(
+        `INSERT INTO cobertura_segmentos
+           (fecha, puesto_id, client_id, employee_id, empleado_nombre, es_externo, externo_dpi,
+            tipo_cobertura, hora_inicio, hora_fin, horas_calculadas,
+            fue_en_dia_descanso, genera_horas_extra, observaciones, usuario_registro)
+         VALUES ($1,$2,$3,NULL,$4,TRUE,$5,'relevo',$6,$7,$8,FALSE,FALSE,$9,'cubrir_externo')
+         RETURNING id`,
+        [hoy, puestoId, puesto.cliente_id ?? null, nombreLimpio, dpiLimpio,
+         puesto.hora_entrada ?? null, puesto.hora_salida ?? null, horasTurno,
+         `Cobertura por agente externo (DPI ${dpiLimpio}) — HE pagada en efectivo, fuera de planilla`]
+      );
+      const segmentoId = segRows[0]?.id ?? null;
+
+      // 2) Pago de HE en EFECTIVO del externo (fuera de planilla legal).
+      await tx.query(
+        `INSERT INTO incentivos_cash_cobertura
+           (employee_id, employee_nombre, es_externo, externo_dpi, fecha,
+            cliente_id, cliente_nombre, puesto_id, puesto_nombre, segmento_id,
+            tipo, monto, motivo, autorizado_por, metodo_pago, estado)
+         VALUES (NULL, $1, TRUE, $2, $3::date, $4, $5, $6, $7, $8,
+                 'he_efectivo', $9, $10, $11, 'efectivo', 'pendiente')`,
+        [nombreLimpio, dpiLimpio, hoy,
+         puesto.cliente_id ?? null, puesto.cliente_nombre ?? null, puestoId, puesto.nombre ?? null, segmentoId,
+         tarifa, `HE agente externo — turno ${jornada}`, usuario ?? null]
+      );
+
+      await tx.query("COMMIT");
+      logger.info({ puestoId, dpi: dpiLimpio, jornada, tarifa, hoy }, "Cobertura por agente externo registrada (HE efectivo, fuera de planilla)");
+      res.status(201).json({
+        ok: true,
+        mensaje: `${nombreLimpio} (externo) cubre ${puesto.nombre} — HE en efectivo Q${tarifa.toFixed(2)}`,
+        jornada, monto: tarifa,
+      });
+    } catch (txErr) {
+      await tx.query("ROLLBACK").catch(() => {});
+      throw txErr;
+    } finally {
+      tx.release();
+    }
+  } catch (err) {
+    logger.error({ err }, "POST /operaciones/cubrir-externo error");
+    res.status(500).json({ error: "Error al registrar cobertura por agente externo" });
+  }
+});
+
 // ─── POST /api/operaciones/registrar-falta ───────────────────────────────────
 // Registrar inasistencia de un titular en su puesto para el día de hoy.
 // Para puestos normales (no-24x24): también actualiza estado_operativo_puesto='faltando'.

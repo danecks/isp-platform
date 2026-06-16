@@ -2772,6 +2772,37 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: INC-01 — error (no bloqueante)");
   }
 
+  // ── EXT-01: cobertura por "Agente externo" (no es empleado de planilla) ────
+  // El externo cubre un puesto descubierto por el día. Se guarda en
+  // cobertura_segmentos con employee_id=NULL (empleado_nombre = nombre del externo)
+  // y su pago de HE se registra en incentivos_cash_cobertura tambien con
+  // employee_id=NULL. Nunca entra a planilla legal.
+  try {
+    await pool.query(`ALTER TABLE cobertura_segmentos ADD COLUMN IF NOT EXISTS es_externo  BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE cobertura_segmentos ADD COLUMN IF NOT EXISTS externo_dpi VARCHAR(20)`);
+    await pool.query(`ALTER TABLE incentivos_cash_cobertura ALTER COLUMN employee_id DROP NOT NULL`);
+    await pool.query(`ALTER TABLE incentivos_cash_cobertura ADD COLUMN IF NOT EXISTS es_externo  BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE incentivos_cash_cobertura ADD COLUMN IF NOT EXISTS externo_dpi VARCHAR(20)`);
+    logger.info("Auto-migrate: EXT-01 columnas de agente externo verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: EXT-01 — error (no bloqueante)");
+  }
+
+  // ── EXT-02: cobertura por "Agente externo" en CUSTODIAS ───────────────────
+  // Las custodias usan custodia_asignacion_diaria (modelo cliente+slot, sin
+  // puestos_operativos). Para cubrir un slot con un externo guardamos
+  // employee_id=NULL + es_externo + nombre/DPI del externo. Su HE en efectivo
+  // se registra en incentivos_cash_cobertura (ya migrada en EXT-01).
+  try {
+    await pool.query(`ALTER TABLE custodia_asignacion_diaria ALTER COLUMN employee_id DROP NOT NULL`);
+    await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS es_externo     BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS externo_nombre VARCHAR(150)`);
+    await pool.query(`ALTER TABLE custodia_asignacion_diaria ADD COLUMN IF NOT EXISTS externo_dpi    VARCHAR(20)`);
+    logger.info("Auto-migrate: EXT-02 columnas de agente externo en custodia_asignacion_diaria verificadas");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: EXT-02 — error (no bloqueante)");
+  }
+
   // ── SSA-MA-01: Tabla ssa_agentes para multi-agente SSA ────────────────────
   try {
     await pool.query(`

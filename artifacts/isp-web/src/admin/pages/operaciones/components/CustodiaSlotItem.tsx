@@ -1,5 +1,5 @@
 import { useDroppable } from "@dnd-kit/core";
-import { Truck, XCircle, UserMinus, Moon, MapPin } from "lucide-react";
+import { Truck, XCircle, UserMinus, Moon, MapPin, UserPlus } from "lucide-react";
 import { iniciales, avatarColor } from "../utils";
 import { Puesto } from "../types";
 
@@ -11,6 +11,7 @@ export function CustodiaSlotItem({
   onRegistrarFalta,
   onQuitarTitular,
   onRegistrarRuta,
+  onAgenteExterno,
 }: {
   puesto: Puesto;
   isAgenteSeleccionado: boolean;
@@ -19,9 +20,11 @@ export function CustodiaSlotItem({
   onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
   onRegistrarRuta?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
+  onAgenteExterno?: (puesto: Puesto) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `puesto-${puesto.id}` });
-  const cubierto = puesto.estado === "cubierto" && !!puesto.agente_id;
+  const esExterno = (puesto as any).es_externo === true;
+  const cubierto = puesto.estado === "cubierto" && (!!puesto.agente_id || esExterno);
   const tieneTitular = !!puesto.titular_employee_id;
   const titularFaltando = (puesto as any).titular_faltando === true;
   const esRelevo = cubierto && tieneTitular && puesto.agente_id !== puesto.titular_employee_id;
@@ -139,6 +142,15 @@ export function CustodiaSlotItem({
                 title={`Registrar ruta del día de ${puesto.agente_nombre}`}
               >
                 <MapPin className="w-3 h-3" /><span>Ruta</span>
+              </button>
+            )}
+            {onAgenteExterno && !cubierto && !descansoExcedente && (
+              <button
+                onClick={e => { e.stopPropagation(); onAgenteExterno(puesto); }}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-teal-300/80 bg-teal-500/10 border border-teal-500/25 hover:bg-teal-500/20 hover:text-teal-300 rounded-md transition-colors"
+                title="Cubrir con agente externo — HE pagada en efectivo, fuera de planilla"
+              >
+                <UserPlus className="w-3 h-3" /><span>Agente externo</span>
               </button>
             )}
           </div>

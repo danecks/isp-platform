@@ -17,6 +17,7 @@ import { ModalCierre } from "./modals/ModalCierre";
 import { ModalReabrir } from "./modals/ModalReabrir";
 import { ModalQuitarTitularidad } from "./modals/ModalQuitarTitularidad";
 import { ModalIncentivoCash } from "./modals/ModalIncentivoCash";
+import { ModalAgenteExterno } from "./modals/ModalAgenteExterno";
 import { ModalAsignarSSA } from "./modals/ModalAsignarSSA";
 import { fechaHoyStr, API_BASE } from "./utils";
 import { formatFechaVista } from "./helpers";
@@ -307,6 +308,14 @@ export function OperacionesModales(p: Props) {
           autorizadoPor={p.currentUserNombre}
           apiBase={API_BASE}
           onClose={() => assignment.setModalIncentivo(null)}
+        />
+      )}
+
+      {assignment.modalAgenteExterno && (
+        <ModalAgenteExterno
+          puesto={assignment.modalAgenteExterno}
+          onConfirm={assignment.confirmarAgenteExterno}
+          onClose={() => assignment.setModalAgenteExterno(null)}
         />
       )}
     </>

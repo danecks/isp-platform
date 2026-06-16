@@ -10,6 +10,7 @@ export function CustodiaGrupo({
   onRegistrarFalta,
   onQuitarTitular,
   onRegistrarRuta,
+  onAgenteExterno,
 }: {
   slots: Puesto[];
   isAgenteSeleccionado: boolean;
@@ -18,12 +19,13 @@ export function CustodiaGrupo({
   onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
   onRegistrarRuta?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
+  onAgenteExterno?: (puesto: Puesto) => void;
 }) {
   if (slots.length === 0) return null;
 
   const ordenados = [...slots].sort((a, b) => (a.slot_numero ?? 0) - (b.slot_numero ?? 0));
   const cubiertos = ordenados.filter(
-    (s) => s.estado === "cubierto" && !!s.agente_id && !s.descanso_por_ciclo,
+    (s) => s.estado === "cubierto" && (!!s.agente_id || (s as any).es_externo === true) && !s.descanso_por_ciclo,
   ).length;
   const operativos = ordenados.filter((s) => !s.descanso_por_ciclo).length;
   const descansoN = ordenados.filter((s) => s.descanso_por_ciclo).length;
@@ -52,6 +54,7 @@ export function CustodiaGrupo({
             onRegistrarFalta={onRegistrarFalta}
             onQuitarTitular={onQuitarTitular}
             onRegistrarRuta={onRegistrarRuta}
+            onAgenteExterno={onAgenteExterno}
           />
         ))}
       </div>

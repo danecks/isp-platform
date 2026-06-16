@@ -49,6 +49,7 @@ export function TableroPuestos() {
       slotNumero: p.slot_numero ?? null,
     });
   };
+  const onAgenteExterno = (p: Puesto) => assignment.setModalAgenteExterno(p);
 
   return (
     <div className="flex-1 overflow-auto relative" style={{ minHeight: 0 }}>
@@ -120,6 +121,7 @@ export function TableroPuestos() {
               onConfigTurno={onConfigTurno}
               onQuitarTitular={puedeQuitarTitular ? onQuitarTitular : undefined}
               onRegistrarRuta={!esFuturo ? onRegistrarRuta : undefined}
+              onAgenteExterno={!esFuturo && !fechaVistaCerrada ? onAgenteExterno : undefined}
               cambiosFuturosProximos={!esFuturo ? cambiosFuturosProximos : undefined}
               planFuturoPorPuesto={esFuturo ? planFuturoPorPuesto : undefined}
               resaltado={clienteResaltado !== null && cliente.clienteId === clienteResaltado}
