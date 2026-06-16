@@ -18,7 +18,7 @@ export function CustodiaGrupo({
   onLiberar?: (puesto: Puesto) => void;
   onRegistrarFalta?: (puesto: Puesto, titularId: number, titularNombre: string) => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
-  onRegistrarRuta?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
+  onRegistrarRuta?: (puesto: Puesto, employeeId: number | null, employeeNombre: string) => void;
   onAgenteExterno?: (puesto: Puesto) => void;
 }) {
   if (slots.length === 0) return null;

@@ -130,6 +130,8 @@ function FilaAsignacion({ clienteId, fecha, asignacion }: {
       await guardar.mutateAsync({
         fecha,
         employeeId: asignacion.employee_id,
+        slotNumero: asignacion.slot_numero,
+        esExterno: asignacion.es_externo === true,
         rutaTexto: ruta.trim() || null,
         horaSalida: hs || null,
         horaRegreso: hr || null,

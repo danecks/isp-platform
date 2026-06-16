@@ -16,19 +16,23 @@ interface Props {
   clienteId: number;
   clienteNombre: string;
   fecha: string;
-  employeeId: number;
+  employeeId: number | null;
   employeeNombre: string;
   slotNumero?: number | null;
+  esExterno?: boolean;
   onClose: () => void;
 }
 
 export function ModalRutaCustodia({
-  clienteId, clienteNombre, fecha, employeeId, employeeNombre, slotNumero, onClose,
+  clienteId, clienteNombre, fecha, employeeId, employeeNombre, slotNumero, esExterno, onClose,
 }: Props) {
   const { toast } = useToast();
 
   const asignaciones = useAsignacionesRutaDia(clienteId, fecha);
-  const actual = asignaciones.data?.find(a => a.employee_id === employeeId);
+  // Para externos (employee_id NULL) identificamos la fila por slot.
+  const actual = asignaciones.data?.find(a =>
+    esExterno ? a.slot_numero === slotNumero : a.employee_id === employeeId,
+  );
 
   const [ruta, setRuta] = useState("");
   const [horaSalida, setHoraSalida] = useState("");
@@ -46,7 +50,7 @@ export function ModalRutaCustodia({
     setPrecargado(true);
   }, [actual, precargado]);
 
-  const historial = useRutasHistorial(clienteId, employeeId, 20);
+  const historial = useRutasHistorial(clienteId, esExterno ? null : employeeId, 20);
   const sugerencias = useMemo(() => {
     const q = ruta.trim().toLowerCase();
     const base = historial.data ?? [];
@@ -65,6 +69,8 @@ export function ModalRutaCustodia({
     try {
       await guardar.mutateAsync({
         fecha, employeeId,
+        slotNumero: slotNumero ?? null,
+        esExterno: esExterno ?? false,
         rutaTexto: ruta.trim() || null,
         horaSalida: horaSalida || null,
         horaRegreso: horaRegreso || null,

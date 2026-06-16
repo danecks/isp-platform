@@ -698,6 +698,15 @@ router.get("/operaciones/tablero", async (req, res) => {
         const asig = asignacionMap.get(i);
         const arma = armaMap.get(i) ?? null;
         const titularFaltando = titular && custodiaFaltaSet.has(titular.employee_id);
+        // Si la asignación del día corresponde a un EMPLEADO (no externo) que
+        // tiene una falta (boleta) registrada hoy, NO debe mostrarse como
+        // presente: el slot debe quedar faltando/descubierto. Antes este caso se
+        // ignoraba porque el bloque `if (asig)` tenía prioridad sobre la
+        // verificación de faltas, así que la boleta de falta quedaba sin efecto
+        // cuando la persona ya estaba en custodia_asignacion_diaria (p. ej. al
+        // armar el día copiando al titular en su mismo slot).
+        const asignadoFaltando =
+          !!asig && !asig.es_externo && custodiaFaltaSet.has(Number(asig.employee_id));
         // Slot por sobre la demanda del día: si hay titular fijo, cuenta como descanso.
         const enDescansoExcedente = i > fuerzaHoy && !!titular && !asig;
 
@@ -706,7 +715,7 @@ router.get("/operaciones/tablero", async (req, res) => {
         let estado = "descubierto";
         let es_relevo_dia = false;
 
-        if (asig) {
+        if (asig && !asignadoFaltando) {
           if (asig.es_externo) {
             // Cobertura por agente externo (no es empleado): employee_id NULL.
             agente_id = null;
@@ -743,6 +752,10 @@ router.get("/operaciones/tablero", async (req, res) => {
           notas_custodia: asig?.notas ?? null,
           titular_employee_id: titular?.employee_id ?? null,
           titular_nombre: titular?.nombre ?? null,
+          // OJO: titular_faltando representa SOLO la ausencia del titular. No se
+          // mezcla con asignadoFaltando para no mal-etiquetar el caso "relevo con
+          // falta" (donde el titular sigue disponible). Cuando el asignado falta y
+          // ES el titular, titularFaltando ya queda true por sí mismo.
           titular_faltando: titularFaltando || false,
           es_relevo_dia,
           arma_id: arma?.arma_id ?? null,

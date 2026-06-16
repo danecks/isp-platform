@@ -46,6 +46,9 @@ custodiasRutasRouter.get("/custodias/cliente/:id/rutas", async (req, res) => {
     if (!clienteId) return res.status(400).json({ error: "ID inválido" });
     const fecha = normFecha(req.query.fecha) ?? todayGT();
 
+    // LEFT JOIN para incluir también a los agentes EXTERNOS (employee_id NULL):
+    // su nombre sale de cad.externo_nombre. Antes el INNER JOIN los excluía, por
+    // lo que no se podía precargar/editar su ruta del día.
     const { rows } = await pool.query(`
       SELECT
         cad.id,
@@ -58,12 +61,13 @@ custodiasRutasRouter.get("/custodias/cliente/:id/rutas", async (req, res) => {
         cad.registrado_por,
         cad.registrado_at,
         cad.notas,
-        e.nombre_completo,
+        cad.es_externo,
+        COALESCE(e.nombre_completo, cad.externo_nombre) AS nombre_completo,
         e.empl_numero
       FROM custodia_asignacion_diaria cad
-      JOIN employees e ON e.id = cad.employee_id
+      LEFT JOIN employees e ON e.id = cad.employee_id
       WHERE cad.cliente_id = $1 AND cad.fecha = $2::date
-      ORDER BY cad.slot_numero, e.nombre_completo
+      ORDER BY cad.slot_numero, COALESCE(e.nombre_completo, cad.externo_nombre)
     `, [clienteId, fecha]);
 
     res.json({ clienteId, fecha, asignaciones: rows });
@@ -87,12 +91,25 @@ custodiasRutasRouter.put("/custodias/cliente/:id/ruta", async (req, res) => {
     const clienteId = parseInt(req.params.id);
     if (!clienteId) return res.status(400).json({ error: "ID inválido" });
 
-    const { fecha, employeeId, rutaTexto, horaSalida, horaRegreso, observaciones } = req.body ?? {};
+    const { fecha, employeeId, slotNumero, esExterno, rutaTexto, horaSalida, horaRegreso, observaciones } = req.body ?? {};
     const fechaNorm = normFecha(fecha);
     if (!fechaNorm) return res.status(400).json({ error: "fecha inválida (YYYY-MM-DD)" });
-    if (!employeeId || !Number.isFinite(Number(employeeId))) {
+
+    // Los agentes EXTERNOS tienen employee_id NULL en custodia_asignacion_diaria,
+    // así que su fila se identifica por slot. Los empleados de planilla siguen
+    // identificándose por employee_id. Exigimos esExterno===true explícito para
+    // usar slot (no inferir por employeeId ausente) y así evitar emparejamientos
+    // accidentales.
+    const usarSlot = esExterno === true;
+    const slotNum = Number(slotNumero);
+    if (usarSlot) {
+      if (!Number.isFinite(slotNum) || slotNum <= 0) {
+        return res.status(400).json({ error: "slotNumero requerido para agente externo" });
+      }
+    } else if (!employeeId || !Number.isFinite(Number(employeeId))) {
       return res.status(400).json({ error: "employeeId requerido" });
     }
+
     const hs = horaSalida === undefined ? undefined : normHora(horaSalida);
     if (horaSalida && hs === null) return res.status(400).json({ error: "hora_salida inválida (HH:MM)" });
     const hr = horaRegreso === undefined ? undefined : normHora(horaRegreso);
@@ -100,6 +117,10 @@ custodiasRutasRouter.put("/custodias/cliente/:id/ruta", async (req, res) => {
 
     const rutaNorm = rutaTexto === undefined ? undefined : (rutaTexto === null ? null : String(rutaTexto).slice(0, 500));
     const obsNorm  = observaciones === undefined ? undefined : (observaciones === null ? null : String(observaciones).slice(0, 1000));
+
+    // El filtro (slot vs employee) usa cadenas fijas, no entrada del usuario.
+    const filtroClave = usarSlot ? "slot_numero = $3" : "employee_id = $3";
+    const claveValor  = usarSlot ? slotNum : Number(employeeId);
 
     const { rows } = await pool.query(`
       UPDATE custodia_asignacion_diaria
@@ -109,10 +130,10 @@ custodiasRutasRouter.put("/custodias/cliente/:id/ruta", async (req, res) => {
              observaciones = COALESCE($7, observaciones),
              registrado_por = $8,
              registrado_at  = NOW()
-       WHERE cliente_id = $1 AND fecha = $2::date AND employee_id = $3
+       WHERE cliente_id = $1 AND fecha = $2::date AND ${filtroClave}
        RETURNING id, slot_numero
     `, [
-      clienteId, fechaNorm, Number(employeeId),
+      clienteId, fechaNorm, claveValor,
       rutaNorm === undefined ? null : rutaNorm,
       hs === undefined ? null : hs,
       hr === undefined ? null : hr,

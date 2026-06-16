@@ -9,9 +9,10 @@ import { useOperacionesContext } from "../OperacionesContext";
 interface RutaModalState {
   clienteId: number;
   clienteNombre: string;
-  employeeId: number;
+  employeeId: number | null;
   employeeNombre: string;
   slotNumero?: number | null;
+  esExterno?: boolean;
 }
 
 export function TableroPuestos() {
@@ -39,7 +40,7 @@ export function TableroPuestos() {
     : setPuestoParaTurno(p);
   const onQuitarTitular = (p: Puesto, employeeId: number, employeeNombre: string) =>
     assignment.setModalQuitarTitular({ puesto: p, employeeId, employeeNombre });
-  const onRegistrarRuta = (p: Puesto, employeeId: number, employeeNombre: string) => {
+  const onRegistrarRuta = (p: Puesto, employeeId: number | null, employeeNombre: string) => {
     if (!p.cliente_id) return;
     setRutaModal({
       clienteId: p.cliente_id,
@@ -47,6 +48,7 @@ export function TableroPuestos() {
       employeeId,
       employeeNombre,
       slotNumero: p.slot_numero ?? null,
+      esExterno: (p as any).es_externo === true,
     });
   };
   const onAgenteExterno = (p: Puesto) => assignment.setModalAgenteExterno(p);
@@ -139,6 +141,7 @@ export function TableroPuestos() {
           employeeId={rutaModal.employeeId}
           employeeNombre={rutaModal.employeeNombre}
           slotNumero={rutaModal.slotNumero ?? null}
+          esExterno={rutaModal.esExterno}
           onClose={() => setRutaModal(null)}
         />
       )}

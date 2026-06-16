@@ -38,7 +38,7 @@ export function ClienteColumna({
   onAbrirSegmentos: (puesto: Puesto) => void;
   onConfigTurno?: (puesto: Puesto) => void;
   onQuitarTitular?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
-  onRegistrarRuta?: (puesto: Puesto, employeeId: number, employeeNombre: string) => void;
+  onRegistrarRuta?: (puesto: Puesto, employeeId: number | null, employeeNombre: string) => void;
   onAgenteExterno?: (puesto: Puesto) => void;
   cambiosFuturosProximos?: Record<number, PlanFuturo[]>;
   planFuturoPorPuesto?: Record<number, PlanFuturo>;

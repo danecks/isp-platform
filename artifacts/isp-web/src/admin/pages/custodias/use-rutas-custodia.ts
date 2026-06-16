@@ -11,7 +11,7 @@ const headers = () => ({ "Content-Type": "application/json", "x-isp-session": ge
 
 export interface AsignacionRuta {
   id: number;
-  employee_id: number;
+  employee_id: number | null;
   slot_numero: number;
   ruta_texto: string | null;
   hora_salida: string | null;
@@ -20,6 +20,7 @@ export interface AsignacionRuta {
   registrado_por: string | null;
   registrado_at: string | null;
   notas: string | null;
+  es_externo?: boolean;
   nombre_completo: string;
   empl_numero: string | null;
 }
@@ -32,7 +33,9 @@ export interface RutaHistorial {
 
 export interface GuardarRutaInput {
   fecha: string;
-  employeeId: number;
+  employeeId: number | null;
+  slotNumero?: number | null;
+  esExterno?: boolean;
   rutaTexto?: string | null;
   horaSalida?: string | null;
   horaRegreso?: string | null;
