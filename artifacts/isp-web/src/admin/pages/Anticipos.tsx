@@ -22,6 +22,8 @@ import {
   Plus,
   AlertTriangle,
   Check,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -102,6 +104,16 @@ export default function Anticipos() {
   const [formTelefono, setFormTelefono] = useState("");
   const [formObservaciones, setFormObservaciones] = useState("");
   const [formExtraordinario, setFormExtraordinario] = useState(false);
+
+  // Edición de una solicitud aún pendiente (corregir monto / datos)
+  const [editarDatos, setEditarDatos] = useState<Anticipo | null>(null);
+  const [edCantidad, setEdCantidad] = useState("");
+  const [edNombre, setEdNombre] = useState("");
+  const [edPuesto, setEdPuesto] = useState("");
+  const [edDpi, setEdDpi] = useState("");
+  const [edTelefono, setEdTelefono] = useState("");
+  // Confirmación de borrado de una solicitud pendiente
+  const [borrarConfirm, setBorrarConfirm] = useState<Anticipo | null>(null);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -233,6 +245,47 @@ export default function Anticipos() {
     },
   });
 
+  const { mutate: guardarEdicion, isPending: editandoGuardando } = useMutation({
+    mutationFn: () =>
+      anticiposApi.update(editarDatos!.id, {
+        cantidad: parseFloat(edCantidad),
+        nombre: edNombre.trim(),
+        puesto: edPuesto.trim() || null,
+        dpi: edDpi.trim() || null,
+        telefono: edTelefono.trim() || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["anticipos"] });
+      setEditarDatos(null);
+      toast({ title: "Solicitud actualizada", description: "Los datos del anticipo se corrigieron." });
+    },
+    onError: (e: unknown) => {
+      const err = e as { error?: string; message?: string };
+      toast({
+        title: "No se pudo editar",
+        description: err?.error || err?.message || "Intenta de nuevo.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const { mutate: borrarAnticipo, isPending: borrando } = useMutation({
+    mutationFn: (id: number) => anticiposApi.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["anticipos"] });
+      setBorrarConfirm(null);
+      toast({ title: "Solicitud borrada", description: "La solicitud pendiente fue eliminada." });
+    },
+    onError: (e: unknown) => {
+      const err = e as { error?: string; message?: string };
+      toast({
+        title: "No se pudo borrar",
+        description: err?.error || err?.message || "Intenta de nuevo.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const { data: pagosResumen, isLoading: cargandoPagos } = useQuery({
     queryKey: ["anticipo-pagos", editando?.id],
     queryFn: () => anticiposApi.getPagos(editando!.id),
@@ -255,6 +308,15 @@ export default function Anticipos() {
     setObservacion(a.observaciones ?? "");
     setNumCuotas(a.numCuotas ?? 1);
     setConfirmacion(null);
+  }
+
+  function abrirEdicionDatos(a: Anticipo) {
+    setEditarDatos(a);
+    setEdCantidad(String(a.cantidad));
+    setEdNombre(a.nombre);
+    setEdPuesto(a.puesto ?? "");
+    setEdDpi(a.dpi ?? "");
+    setEdTelefono(a.telefono ?? "");
   }
 
   function guardarCambio() {
@@ -510,7 +572,7 @@ export default function Anticipos() {
                   <tr className="border-b border-white/5 text-white/30 text-xs uppercase tracking-wider">
                     <th className="text-left px-5 py-3 font-medium">ID</th>
                     <th className="text-left px-4 py-3 font-medium">Colaborador</th>
-                    <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Puesto</th>
+                    <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Cliente / Puesto</th>
                     <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">DPI</th>
                     <th className="text-right px-4 py-3 font-medium">Solicitado</th>
                     <th className="text-right px-4 py-3 font-medium hidden md:table-cell">A descontar</th>
@@ -543,8 +605,15 @@ export default function Anticipos() {
                           <p className="text-xs text-white/30 mt-0.5">{a.telefono}</p>
                         )}
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell text-white/60 text-xs">
-                        {a.puesto ?? "—"}
+                      <td className="px-4 py-3 hidden md:table-cell text-xs">
+                        {a.clienteNombre || a.puestoActual ? (
+                          <div className="leading-tight">
+                            <p className="text-white/70">{a.clienteNombre ?? "—"}</p>
+                            <p className="text-white/40">{a.puestoActual ?? a.puesto ?? "—"}</p>
+                          </div>
+                        ) : (
+                          <span className="text-white/40">{a.puesto ?? "—"}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell font-mono text-xs text-white/40">
                         {a.dpi ?? "—"}
@@ -578,12 +647,32 @@ export default function Anticipos() {
                         {fmtDate(a.fechaSolicitud)}
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => abrirEdicion(a)}
-                          className="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/60 hover:text-white transition-colors border border-white/5"
-                        >
-                          Revisar
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => abrirEdicion(a)}
+                            className="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/60 hover:text-white transition-colors border border-white/5"
+                          >
+                            Revisar
+                          </button>
+                          {a.estado === "pendiente" && (
+                            <>
+                              <button
+                                onClick={() => abrirEdicionDatos(a)}
+                                title="Editar monto y datos"
+                                className="p-1.5 rounded-lg bg-white/5 hover:bg-primary/15 text-white/50 hover:text-primary transition-colors border border-white/5"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setBorrarConfirm(a)}
+                                title="Borrar solicitud"
+                                className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/15 text-white/50 hover:text-red-400 transition-colors border border-white/5"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -897,6 +986,149 @@ export default function Anticipos() {
           </div>
         </div>
       )}
+      {/* MODAL EDITAR DATOS (solo solicitudes pendientes) */}
+      {editarDatos && (
+        <div
+          className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setEditarDatos(null); }}
+        >
+          <div className="bg-[#0c1829] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white">Editar solicitud ANT-{editarDatos.id}</h2>
+              <button onClick={() => setEditarDatos(null)} className="text-white/30 hover:text-white text-xl leading-none">×</button>
+            </div>
+            <p className="text-xs text-white/40">
+              Solo se puede editar mientras la solicitud está pendiente (sin aprobar).
+            </p>
+
+            <div>
+              <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">Nombre</label>
+              <input
+                value={edNombre}
+                onChange={(e) => setEdNombre(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">Monto solicitado (Q)</label>
+              <input
+                type="number"
+                min="1"
+                step="0.01"
+                value={edCantidad}
+                onChange={(e) => setEdCantidad(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+              />
+              {(() => {
+                const base = parseFloat(edCantidad);
+                if (isNaN(base) || base <= 0) return null;
+                const { montoCobro } = calcularCobroAnticipo(base, 1);
+                return (
+                  <p className="text-xs text-amber-400/80 mt-1">
+                    A descontar (provisional, 1 cuota): {fmtQ(montoCobro)}
+                  </p>
+                );
+              })()}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">Puesto (texto)</label>
+                <input
+                  value={edPuesto}
+                  onChange={(e) => setEdPuesto(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">DPI</label>
+                <input
+                  value={edDpi}
+                  onChange={(e) => setEdDpi(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-primary/50"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-white/40 uppercase tracking-wider mb-1.5">Teléfono</label>
+              <input
+                value={edTelefono}
+                onChange={(e) => setEdTelefono(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setEditarDatos(null)}
+                className="flex-1 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-white/60 border border-white/5"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const base = parseFloat(edCantidad);
+                  if (!edNombre.trim()) {
+                    toast({ title: "Falta el nombre", description: "El nombre no puede quedar vacío.", variant: "destructive" });
+                    return;
+                  }
+                  if (isNaN(base) || base <= 0) {
+                    toast({ title: "Monto inválido", description: "El monto debe ser mayor a 0.", variant: "destructive" });
+                    return;
+                  }
+                  guardarEdicion();
+                }}
+                disabled={editandoGuardando}
+                className="flex-1 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-sm text-white font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {editandoGuardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMACIÓN BORRADO (solo solicitudes pendientes) */}
+      {borrarConfirm && (
+        <div
+          className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setBorrarConfirm(null); }}
+        >
+          <div className="bg-[#0c1829] border border-white/10 rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-red-500/15">
+                <Trash2 className="w-5 h-5 text-red-400" />
+              </div>
+              <h2 className="text-lg font-bold text-white">Borrar solicitud ANT-{borrarConfirm.id}</h2>
+            </div>
+            <p className="text-sm text-white/60">
+              Vas a borrar la solicitud de <span className="text-white font-medium">{borrarConfirm.nombre}</span> por{" "}
+              <span className="text-white font-medium">{fmtQ(borrarConfirm.cantidad)}</span>. Esta acción no se puede deshacer.
+              Solo se permite porque la solicitud aún está pendiente.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setBorrarConfirm(null)}
+                className="flex-1 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-white/60 border border-white/5"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => borrarAnticipo(borrarConfirm.id)}
+                disabled={borrando}
+                className="flex-1 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-sm text-white font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {borrando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Sí, borrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL NUEVO ANTICIPO MANUAL */}
       {modalNuevo && (
         <div

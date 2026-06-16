@@ -174,6 +174,8 @@ export interface Anticipo {
   observaciones: string | null;
   createdAt: string;
   updatedAt: string;
+  clienteNombre?: string | null;  // cliente donde está asignado HOY (derivado)
+  puestoActual?: string | null;   // nombre del puesto operativo actual (derivado)
 }
 
 export interface AnticipoTotales {
@@ -220,8 +222,21 @@ export const anticiposApi = {
   },
   getConfig: () => apiFetch<AnticipoPeriodoConfig>("/anticipos/config"),
   getPagos: (id: number) => apiFetch<AnticipoPagosResumen>(`/anticipos/${id}/pagos`),
-  update: (id: number, data: { estado?: string; observaciones?: string; num_cuotas?: number }) =>
-    apiFetch<Anticipo>(`/anticipos/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  update: (
+    id: number,
+    data: {
+      estado?: string;
+      observaciones?: string;
+      num_cuotas?: number;
+      cantidad?: number;
+      nombre?: string;
+      puesto?: string | null;
+      dpi?: string | null;
+      telefono?: string | null;
+    },
+  ) => apiFetch<Anticipo>(`/anticipos/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  remove: (id: number) =>
+    apiFetch<{ ok: boolean; id: number }>(`/anticipos/${id}`, { method: "DELETE" }),
   create: (data: {
     nombre: string;
     cantidad: number;

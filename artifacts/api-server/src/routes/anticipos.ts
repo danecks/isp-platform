@@ -108,6 +108,68 @@ anticiposRouter.get("/anticipos", async (req, res) => {
     if (desde) rows = rows.filter((r) => new Date(r.fechaSolicitud) >= new Date(desde));
     if (hasta) rows = rows.filter((r) => new Date(r.fechaSolicitud) <= new Date(hasta));
 
+    // ── Cliente + puesto ACTUAL del colaborador ───────────────────────────────
+    // El campo `puesto` guardado es texto libre (lo que escribió quien solicitó)
+    // y no dice ni el cliente ni el puesto real. Resolvemos la asignación vigente
+    // por employee_id: guardias → puesto_slots/puesto_titulares/titular legacy
+    // (de ahí salen cliente_nombre y el nombre del puesto); custodios sin puesto
+    // → cliente de custodia_titulares / asignación diaria más reciente.
+    const empleadoIds = Array.from(
+      new Set(rows.map((r) => r.employeeId).filter((id): id is number => id != null)),
+    );
+    if (empleadoIds.length > 0) {
+      const { rows: asignaciones } = await pool.query(
+        `SELECT e.eid AS employee_id, asg.cliente_nombre, asg.puesto_nombre
+           FROM unnest($1::int[]) AS e(eid)
+           LEFT JOIN LATERAL (
+             SELECT u.cliente_nombre, u.puesto_nombre
+             FROM (
+               SELECT po.cliente_nombre, po.nombre AS puesto_nombre, 0 AS prio, NULL::date AS fecha
+                 FROM puesto_slots ps
+                 JOIN puestos_operativos po ON po.id = ps.puesto_id AND po.activo = TRUE
+                WHERE ps.empleado_id = e.eid AND ps.activo = TRUE
+               UNION ALL
+               SELECT po.cliente_nombre, po.nombre, 1 AS prio, NULL::date
+                 FROM puesto_titulares pt
+                 JOIN puestos_operativos po ON po.id = pt.puesto_id AND po.activo = TRUE
+                WHERE pt.employee_id = e.eid AND pt.activo = TRUE
+               UNION ALL
+               SELECT po.cliente_nombre, po.nombre, 2 AS prio, NULL::date
+                 FROM puestos_operativos po
+                WHERE po.titular_employee_id = e.eid AND po.activo = TRUE
+               UNION ALL
+               SELECT c.nombre AS cliente_nombre, NULL::varchar AS puesto_nombre, 3 AS prio, NULL::date
+                 FROM custodia_titulares ct
+                 JOIN clients c ON c.id = ct.cliente_id
+                WHERE ct.employee_id = e.eid AND ct.activo = TRUE
+               UNION ALL
+               SELECT c.nombre, NULL::varchar, 4 AS prio, cad.fecha
+                 FROM custodia_asignacion_diaria cad
+                 JOIN clients c ON c.id = cad.cliente_id
+                WHERE cad.employee_id = e.eid AND cad.fecha <= CURRENT_DATE
+             ) u
+             ORDER BY u.prio ASC, u.fecha DESC NULLS LAST
+             LIMIT 1
+           ) asg ON TRUE`,
+        [empleadoIds],
+      );
+      const mapa = new Map<number, { clienteNombre: string | null; puestoActual: string | null }>();
+      for (const a of asignaciones as Array<Record<string, unknown>>) {
+        mapa.set(a.employee_id as number, {
+          clienteNombre: (a.cliente_nombre as string | null) ?? null,
+          puestoActual: (a.puesto_nombre as string | null) ?? null,
+        });
+      }
+      rows = rows.map((r) => {
+        const asg = r.employeeId != null ? mapa.get(r.employeeId) : undefined;
+        return {
+          ...r,
+          clienteNombre: asg?.clienteNombre ?? null,
+          puestoActual: asg?.puestoActual ?? null,
+        };
+      });
+    }
+
     // Totales por estado
     const all = await db.select().from(anticiposTable);
     const totales = {
@@ -322,11 +384,19 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
 
-  const { estado, observaciones, num_cuotas } = req.body ?? {};
+  const { estado, observaciones, num_cuotas, cantidad, nombre, puesto, dpi, telefono } = req.body ?? {};
   const ESTADOS_VALIDOS = ["pendiente", "aprobada", "rechazada", "pagada"];
   if (estado && !ESTADOS_VALIDOS.includes(estado)) {
     return res.status(400).json({ error: "Estado inválido", validos: ESTADOS_VALIDOS });
   }
+  // ¿Se está intentando editar los DATOS de la solicitud (monto, nombre, etc.)?
+  // Esto solo se permite mientras el anticipo sigue pendiente (sin aprobar).
+  const editaDatos =
+    cantidad !== undefined ||
+    nombre !== undefined ||
+    puesto !== undefined ||
+    dpi !== undefined ||
+    telefono !== undefined;
 
   try {
     // Bloqueo de seguridad: anticipos vinculados a una planilla no se pueden editar
@@ -347,6 +417,17 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
     // ninguna cuota (cuotas_pagadas === 0). Editar solo las observaciones
     // siempre está permitido.
     const actual = existing[0];
+
+    // ── Editar DATOS solo si sigue pendiente ──────────────────────────────────
+    // El director pidió poder corregir el MONTO (y datos) de solicitudes que
+    // todavía no se aprobaron ("un par se equivocaron de monto y ya no se pudo
+    // modificar"). Una vez aprobado el anticipo, los datos quedan fijos.
+    if (editaDatos && actual.estado !== "pendiente") {
+      return res.status(409).json({
+        error: "Solo se pueden editar los datos (monto, nombre, etc.) mientras el anticipo está pendiente.",
+      });
+    }
+
     const ESTADOS_BLOQUEADOS = ["aprobada", "descontado", "pagada"];
     if (ESTADOS_BLOQUEADOS.includes(actual.estado)) {
       // ¿Quién edita? El director es el rol "admin".
@@ -395,10 +476,33 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
     if (estado) updates.estado = estado;
     if (observaciones !== undefined) updates.observaciones = observaciones;
 
+    // ── Edición de datos (solo pendientes, ya validado arriba) ────────────────
+    if (editaDatos) {
+      if (nombre !== undefined) {
+        const n = String(nombre).trim();
+        if (!n) return res.status(400).json({ error: "El nombre no puede quedar vacío." });
+        updates.nombre = n;
+      }
+      if (puesto !== undefined) updates.puesto = puesto ? String(puesto).trim() : null;
+      if (dpi !== undefined) updates.dpi = dpi ? String(dpi).trim() : null;
+      if (telefono !== undefined) updates.telefono = telefono ? String(telefono).trim() : null;
+      if (cantidad !== undefined) {
+        const monto = Number(cantidad);
+        if (isNaN(monto) || monto <= 0) {
+          return res.status(400).json({ error: "El monto debe ser un número mayor a 0." });
+        }
+        updates.cantidad = monto;
+        // Recalcular el cobro provisional (1 cuota, 10%), igual que al crear: las
+        // cuotas reales se definen al aprobar.
+        updates.montoCobro = String(calcularCobroAnticipo(monto, 1).montoCobro);
+      }
+    }
+
     // Cuando se aprueba: calcular cuotas si se indicó num_cuotas
     if (estado === "aprobada" && num_cuotas) {
       const cuotas = Math.max(1, parseInt(num_cuotas, 10) || 1);
-      const { cuotaMonto, montoCobro } = calcularCobroAnticipo(existing[0].cantidad, cuotas);
+      const montoBase = (updates.cantidad as number | undefined) ?? existing[0].cantidad;
+      const { cuotaMonto, montoCobro } = calcularCobroAnticipo(montoBase, cuotas);
       updates.numCuotas = cuotas;
       updates.cuotaMonto = String(cuotaMonto);
       updates.montoCobro = String(montoCobro);
@@ -434,6 +538,48 @@ anticiposRouter.patch("/anticipos/:id", async (req, res) => {
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: "Error al actualizar anticipo" });
+  }
+});
+
+// ── DELETE /api/anticipos/:id ──────────────────────────────────────────────
+// Borrar una solicitud SOLO si todavía está pendiente (sin aprobar), no está
+// vinculada a una planilla y no tiene cuotas descontadas. Es la salida para
+// cuando alguien se equivocó de datos y la solicitud aún no se procesó. El
+// bloqueo tras aprobar/vincular se mantiene intacto.
+anticiposRouter.delete("/anticipos/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+
+  try {
+    const [existing] = await db
+      .select()
+      .from(anticiposTable)
+      .where(eq(anticiposTable.id, id))
+      .limit(1);
+    if (!existing) return res.status(404).json({ error: "Anticipo no encontrado" });
+
+    if (existing.planillaId !== null) {
+      return res.status(409).json({
+        error: "Este anticipo está vinculado a una planilla y no puede borrarse.",
+        planilla_id: existing.planillaId,
+      });
+    }
+    if (existing.estado !== "pendiente") {
+      return res.status(409).json({
+        error: "Solo se pueden borrar solicitudes pendientes (sin aprobar).",
+      });
+    }
+    if ((existing.cuotasPagadas ?? 0) > 0) {
+      return res.status(409).json({
+        error: "No se puede borrar: ya se descontaron cuotas de este anticipo.",
+        cuotas_pagadas: existing.cuotasPagadas,
+      });
+    }
+
+    await db.delete(anticiposTable).where(eq(anticiposTable.id, id));
+    res.json({ ok: true, id });
+  } catch (err) {
+    res.status(500).json({ error: "Error al borrar anticipo" });
   }
 });
 
