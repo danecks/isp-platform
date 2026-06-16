@@ -4,15 +4,15 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { AlertCircle, Banknote, Building2, Download } from "lucide-react";
-import { apiRequest, BASE, fmtQ } from "./helpers";
+import { apiRequest, fmtQ } from "./helpers";
+import { downloadFile } from "@/lib/httpClient";
 import type { ResumenTransferencias } from "./types";
-
-const API = `${BASE}/api`;
 
 export function ModalTransferencias({ planillaId, onClose }: { planillaId: number; onClose: () => void }) {
   const [resumen, setResumen] = useState<ResumenTransferencias | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [descargando, setDescargando] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -22,9 +22,20 @@ export function ModalTransferencias({ planillaId, onClose }: { planillaId: numbe
       .finally(() => setLoading(false));
   }, [planillaId]);
 
-  function handleDescargar(banco: string) {
-    const url = `${API}/nomina/planilla/${planillaId}/transferencias?banco=${encodeURIComponent(banco)}`;
-    window.open(url, "_blank");
+  async function handleDescargar(banco: string) {
+    setError(null);
+    setDescargando(banco);
+    try {
+      const safe = banco.replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_+|_+$/g, "");
+      await downloadFile(
+        `/nomina/planilla/${planillaId}/transferencias?banco=${encodeURIComponent(banco)}`,
+        `transferencias_${safe || "banco"}.csv`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo descargar el archivo");
+    } finally {
+      setDescargando(null);
+    }
   }
 
   return (
@@ -77,8 +88,10 @@ export function ModalTransferencias({ planillaId, onClose }: { planillaId: numbe
                     </div>
                   </div>
                   <Button onClick={() => handleDescargar(b.banco)} size="sm"
+                    disabled={descargando !== null}
                     className="bg-amber-600 hover:bg-amber-500 text-white gap-2">
-                    <Download className="h-4 w-4" /> Descargar
+                    <Download className="h-4 w-4" />
+                    {descargando === b.banco ? "Descargando..." : "Descargar"}
                   </Button>
                 </div>
               ))}

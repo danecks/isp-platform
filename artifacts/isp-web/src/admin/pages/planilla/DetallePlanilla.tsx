@@ -7,7 +7,8 @@ import {
   ArrowRight, Banknote, CalendarDays, CheckCircle2, ChevronLeft, Download,
   FileSpreadsheet, Lock, Printer, Settings, TrendingUp, Undo2, Users, Wallet,
 } from "lucide-react";
-import { BASE, fmtFecha, fmtQ } from "./helpers";
+import { fmtFecha, fmtQ } from "./helpers";
+import { downloadFile } from "@/lib/httpClient";
 import { ACCION_LABEL, EstadoBadge, KpiCard, SIGUIENTE_ESTADO } from "./badges";
 import { ModalImprimir } from "./impresion";
 import { ModalTransferencias } from "./ModalTransferencias";
@@ -19,8 +20,6 @@ import { TabPlanillaGeneral } from "./TabPlanillaGeneral";
 import { TabTarifasHE } from "./TabTarifasHE";
 import type { PlanillaDetalle as PlanillaDetalleData } from "./types";
 
-const API = `${BASE}/api`;
-
 export function DetallePlanilla({
   planilla, onBack, onCambiarEstado, onRevertir,
 }: {
@@ -29,8 +28,22 @@ export function DetallePlanilla({
   onCambiarEstado: () => void;
   onRevertir: () => void;
 }) {
-  function handleExportCSV() {
-    window.open(`${API}/nomina/planilla/${planilla.id}/export`, "_blank");
+  const [exportando, setExportando] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  async function handleExportCSV() {
+    setExportError(null);
+    setExportando(true);
+    try {
+      await downloadFile(
+        `/nomina/planilla/${planilla.id}/export`,
+        `planilla_${planilla.id}.csv`,
+      );
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "No se pudo exportar la planilla");
+    } finally {
+      setExportando(false);
+    }
   }
 
   const [modalTransferencias, setModalTransferencias] = useState(false);
@@ -67,10 +80,10 @@ export function DetallePlanilla({
             <Printer className="h-4 w-4" />
             Imprimir
           </Button>
-          <Button onClick={handleExportCSV} variant="outline"
+          <Button onClick={handleExportCSV} variant="outline" disabled={exportando}
             className="border-[#1e3a5f] text-[#8bacc8] hover:text-white gap-2">
             <Download className="h-4 w-4" />
-            Exportar CSV
+            {exportando ? "Exportando..." : "Exportar CSV"}
           </Button>
           <Button onClick={() => setModalTransferencias(true)} variant="outline"
             className="border-amber-700/60 text-amber-300 hover:text-amber-200 hover:border-amber-600 gap-2">
@@ -97,6 +110,12 @@ export function DetallePlanilla({
           )}
         </div>
       </div>
+
+      {exportError && (
+        <div className="bg-red-950/40 border border-red-800 rounded p-3 text-sm text-red-300">
+          {exportError}
+        </div>
+      )}
 
       {/* Nota: solo lectura */}
       <div className="bg-amber-950/30 border border-amber-700/50 rounded p-3 flex gap-2 text-xs text-amber-300">
