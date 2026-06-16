@@ -21,3 +21,13 @@ error, migrarlas a `downloadFile`.
 
 **How to apply:** cualquier botón de "descargar/exportar" que pegue a `/api/...`
 protegido debe ir por `downloadFile`, no por window.open/anchor de navegación.
+
+**Segundo fallo (200 pero no guarda):** tras migrar a `downloadFile`, el backend
+respondía 200 con el CSV pero el navegador (Chromium) no guardaba el archivo. Causa:
+el `<a download>` se removía del DOM y el object URL se revocaba en el MISMO tick del
+`a.click()`. Como el click ocurre DESPUÉS de un `await` (el fetch), ya no está dentro
+del tick de activación del usuario, y Chromium cancela la descarga silenciosamente si
+el ancla desaparece de inmediato. **Regla:** en descargas blob iniciadas tras un
+await, diferir TANTO `a.remove()` como `URL.revokeObjectURL()` (~1.5s); nunca limpiar
+sincrónicamente en el mismo tick del click. Diagnóstico clave: los 200 en logs prueban
+que el problema es el guardado en cliente, no auth/CSP/SW (la sesión es header-only).

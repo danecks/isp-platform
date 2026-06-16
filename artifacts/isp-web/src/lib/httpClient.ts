@@ -183,18 +183,30 @@ export async function downloadFile(path: string, filename: string): Promise<void
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
   try {
-    const a = document.createElement("a");
     a.href = url;
     a.download = filename;
+    a.rel = "noopener";
+    a.style.display = "none";
     document.body.appendChild(a);
     a.click();
+  } catch (e) {
+    // Fallo síncrono al montar/disparar el enlace → limpiar de inmediato.
     a.remove();
-  } finally {
-    // Diferimos el revoke: algunos browsers cancelan la descarga si el object
-    // URL se libera demasiado pronto tras el click.
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    URL.revokeObjectURL(url);
+    throw e;
   }
+  // Diferimos TANTO el remove del <a> como el revoke del object URL.
+  // El click se dispara después de un `await` (el fetch), así que ya no está
+  // dentro del tick de la activación del usuario. Si en ese mismo tick
+  // quitamos el <a> del DOM o liberamos el object URL, algunos navegadores
+  // (Chromium) cancelan silenciosamente la descarga: el backend responde 200
+  // pero el archivo nunca se guarda. Mantener el <a> vivo ~1.5s lo evita.
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 1500);
 }
 
 /**
