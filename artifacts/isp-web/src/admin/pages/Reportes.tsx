@@ -7,7 +7,7 @@ import {
   Filter, Calendar, Building2, Loader2, BarChart3,
   AlertTriangle, CheckSquare, Users, Briefcase, TrendingUp,
   FileDown, ChevronDown, X, Map, ArrowRight, CalendarClock,
-  Receipt, Pencil, Check, Banknote
+  Receipt, Pencil, Check, Banknote, Trash2
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
@@ -1015,6 +1015,7 @@ function ReporteHorasExtraCash({ nombre }: { nombre: string }) {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [anulandoId, setAnulandoId] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -1079,6 +1080,27 @@ function ReporteHorasExtraCash({ nombre }: { nombre: string }) {
       ]),
     );
     pdf.save(`he-efectivo-${desde}_a_${hasta}.pdf`);
+  };
+
+  const anular = async (r: any) => {
+    if (anulandoId) return;
+    const quien = r.empleado_nombre ? `de ${r.empleado_nombre}` : "";
+    if (!window.confirm(`¿Anular esta hora extra en efectivo ${quien}?\n\nSe revertirá el pago y la HE volverá a quedar pendiente.`)) return;
+    const motivo = window.prompt("Motivo de la anulación (opcional):") ?? "";
+    setAnulandoId(r.id);
+    try {
+      const res = await fetch(`${API_BASE}/rrhh/horas-extra-cash/anular`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: r.id, motivo, usuario: nombre }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await cargar();
+    } catch (e: any) {
+      alert(e.message ?? "No se pudo anular la HE en efectivo");
+    } finally {
+      setAnulandoId(null);
+    }
   };
 
   return (
@@ -1153,6 +1175,7 @@ function ReporteHorasExtraCash({ nombre }: { nombre: string }) {
                   <th className="text-right font-medium px-3 py-2.5">Monto</th>
                   <th className="text-left font-medium px-3 py-2.5">Pagado por</th>
                   <th className="text-left font-medium px-3 py-2.5">Fecha de pago</th>
+                  <th className="text-right font-medium px-3 py-2.5">Acción</th>
                 </tr>
               </thead>
               <tbody>
@@ -1168,6 +1191,13 @@ function ReporteHorasExtraCash({ nombre }: { nombre: string }) {
                     <td className="px-3 py-2 text-right text-emerald-400 font-semibold whitespace-nowrap">{fmtQ(r.monto)}</td>
                     <td className="px-3 py-2 text-white/50">{r.pagado_por ?? "—"}</td>
                     <td className="px-3 py-2 text-white/50 whitespace-nowrap">{r.fecha_pago ? fmtFecha(r.fecha_pago) : "—"}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <button onClick={() => anular(r)} disabled={anulandoId === r.id}
+                        className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 hover:bg-red-500/20 disabled:opacity-40">
+                        {anulandoId === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                        Anular
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

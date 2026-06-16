@@ -1110,6 +1110,145 @@ eventosRrhhRouter.get("/rrhh/horas-extra-cash", async (req, res) => {
   }
 });
 
+// ─── POST /api/rrhh/horas-extra-cash/anular ──────────────────────────────────
+// Anula una HE pagada en efectivo y revierte sus efectos. Recibe el id compuesto
+// del reporte: `inc-<id>` (pizarrón → incentivos_cash_cobertura) o
+// `nov-<id>` (anexo → novedades_nomina_diarias). La operación es transaccional.
+//  • inc-: soft-delete del incentivo (estado='cancelado') + revierte la novedad
+//    (impacto_nomina → 'pendiente') y el evento de HE (→ 'pendiente_aprobacion').
+//  • nov-: revierte la novedad (horas_extra_estado/impacto_nomina → 'pendiente'),
+//    el evento ('resuelto_cash' → 'pendiente') y reabre la alerta de RRHH.
+eventosRrhhRouter.post("/rrhh/horas-extra-cash/anular", async (req, res) => {
+  const { id, motivo, usuario } = req.body as { id?: string; motivo?: string; usuario?: string };
+  const m = /^(inc|nov)-(\d+)$/.exec(String(id ?? "").trim());
+  if (!m) return res.status(400).json({ error: "id inválido (esperado inc-<n> o nov-<n>)" });
+  const origen = m[1];
+  const realId = Number(m[2]);
+  const quien = usuario ?? "RRHH";
+  const nota = ` | ANULADO ${new Date().toISOString().slice(0, 10)} por ${quien}${motivo ? `: ${motivo}` : ""}`;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    if (origen === "inc") {
+      const { rows: icRows } = await client.query(
+        `SELECT id, employee_id, fecha, estado FROM incentivos_cash_cobertura
+         WHERE id = $1 AND tipo = 'he_efectivo' FOR UPDATE`,
+        [realId]
+      );
+      if (!icRows.length) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "HE en efectivo no encontrada" });
+      }
+      const ic = icRows[0];
+      if (ic.estado === "cancelado") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "Esta HE ya estaba anulada" });
+      }
+
+      await client.query(
+        `UPDATE incentivos_cash_cobertura
+         SET estado = 'cancelado',
+             observaciones = COALESCE(observaciones, '') || $2,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [realId, nota]
+      );
+
+      // El impacto en novedades/eventos del pizarrón se marca por empleado+fecha
+      // (no por puesto). Si aún queda OTRA HE en efectivo activa ese mismo día
+      // para el colaborador, NO revertimos: esos registros siguen respaldando
+      // el otro pago vigente. Solo revertimos cuando ya no queda ninguna.
+      const { rows: restantes } = await client.query(
+        `SELECT COUNT(*)::int AS n FROM incentivos_cash_cobertura
+         WHERE employee_id = $1 AND fecha = $2::date
+           AND tipo = 'he_efectivo' AND estado <> 'cancelado'`,
+        [ic.employee_id, ic.fecha]
+      );
+
+      if (restantes[0].n === 0) {
+        // Revierte solo el impacto que dejó el pago en efectivo del pizarrón,
+        // sin tocar novedades pagadas por la vía del anexo (horas_extra_estado).
+        await client.query(
+          `UPDATE novedades_nomina_diarias
+           SET impacto_nomina = 'pendiente', updated_at = NOW()
+           WHERE fecha = $1::date AND employee_id = $2
+             AND impacto_nomina = 'pagado_efectivo'
+             AND horas_extra_estado <> 'pagado_efectivo'`,
+          [ic.fecha, ic.employee_id]
+        );
+
+        await client.query(
+          `UPDATE eventos_rrhh
+           SET estado = 'pendiente_aprobacion',
+               tipo_resolucion = NULL,
+               rrhh_resuelto_por = NULL,
+               rrhh_resuelto_at = NULL,
+               updated_at = NOW()
+           WHERE employee_id = $1
+             AND fecha::date = $2::date
+             AND tipo_evento = 'horas_extra'
+             AND estado = 'pagado_efectivo'`,
+          [ic.employee_id, ic.fecha]
+        );
+      }
+    } else {
+      const { rows: novRows } = await client.query(
+        `SELECT id, employee_id, fecha, evento_rrhh_id, horas_extra_estado
+         FROM novedades_nomina_diarias WHERE id = $1 FOR UPDATE`,
+        [realId]
+      );
+      if (!novRows.length) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Novedad no encontrada" });
+      }
+      const nov = novRows[0];
+      if (nov.horas_extra_estado !== "pagado_efectivo") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "Esta HE no está pagada en efectivo o ya fue revertida" });
+      }
+
+      await client.query(
+        `UPDATE novedades_nomina_diarias
+         SET horas_extra_estado = 'pendiente',
+             impacto_nomina = 'pendiente',
+             horas_extra_aprobadas_por = NULL,
+             horas_extra_aprobadas_at = NULL,
+             observaciones = COALESCE(observaciones, '') || $2,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [realId, nota]
+      );
+
+      if (nov.evento_rrhh_id) {
+        await client.query(
+          `UPDATE eventos_rrhh SET estado = 'pendiente', updated_at = NOW()
+           WHERE id = $1 AND estado = 'resuelto_cash'`,
+          [nov.evento_rrhh_id]
+        );
+      }
+
+      await client.query(
+        `UPDATE rrhh_alertas
+         SET estado = 'pendiente', resuelta_at = NULL, resuelta_por = NULL
+         WHERE tipo = 'horas_extra_pendiente' AND novedad_id = $1 AND estado = 'resuelta'`,
+        [realId]
+      );
+    }
+
+    await client.query("COMMIT");
+    logger.info({ id, origen, realId, usuario: quien, motivo }, "HE en efectivo anulada (revertida)");
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    logger.error({ err, id }, "POST /rrhh/horas-extra-cash/anular error");
+    res.status(500).json({ error: "Error al anular HE en efectivo" });
+  } finally {
+    client.release();
+  }
+});
+
 // ─── GET /api/rrhh/empleado/:id/kpi ──────────────────────────────────────────
 // KPI individual del empleado: faltas, actas, suspensiones, HE aprobadas, semáforo Art.77
 eventosRrhhRouter.get("/rrhh/empleado/:id/kpi", async (req, res) => {

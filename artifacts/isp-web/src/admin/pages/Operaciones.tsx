@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { LayoutGrid, Banknote } from "lucide-react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
@@ -35,6 +36,7 @@ import { PanelJefesFuturo } from "./operaciones/sections/PanelJefesFuturo";
 import { PanelSSA } from "./operaciones/sections/PanelSSA";
 import { ModalCrearSSA } from "./operaciones/components/ModalCrearSSA";
 import { PanelProximosArranques } from "./operaciones/sections/PanelProximosArranques";
+import { PanelHEEfectivo } from "./operaciones/sections/PanelHEEfectivo";
 import { DragOverlayAgente } from "./operaciones/sections/DragOverlayAgente";
 
 export default function Operaciones() {
@@ -47,6 +49,7 @@ export default function Operaciones() {
   const puedeQuitarTitular  = currentUser?.rol === "admin" || currentUser?.rol === "operaciones";
 
   // ── Estado UI compartido ──────────────────────────────────────────────────
+  const [vistaPizarron, setVistaPizarron]           = useState<"pizarron" | "he_efectivo">("pizarron");
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<Agente | null>(null);
   const [historialAbierto, setHistorialAbierto]     = useState(false);
   const [nuevoPuestoData, setNuevoPuestoData]       = useState<ClienteBoard | null | "nuevo">(null);
@@ -309,6 +312,27 @@ export default function Operaciones() {
   return (
     <AdminLayout title="Pizarrón Operativo">
       <OperacionesProvider value={ctx}>
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/8 pb-1 mb-3">
+          {([
+            { id: "pizarron" as const,    label: "Pizarrón",        icon: LayoutGrid },
+            { id: "he_efectivo" as const, label: "HE en Efectivo",  icon: Banknote },
+          ]).map((t) => {
+            const active = vistaPizarron === t.id;
+            const Icon = t.icon;
+            return (
+              <button key={t.id} onClick={() => setVistaPizarron(t.id)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-t-lg border-b-2 transition-colors ${
+                  active ? "border-primary text-white" : "border-transparent text-white/45 hover:text-white/75"
+                }`}>
+                <Icon className="w-3.5 h-3.5" /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {vistaPizarron === "he_efectivo" ? (
+          <PanelHEEfectivo />
+        ) : (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex flex-col h-full gap-4" style={{ minHeight: 0 }}>
 
@@ -357,6 +381,7 @@ export default function Operaciones() {
             {draggingAgente && <DragOverlayAgente agente={draggingAgente} />}
           </DragOverlay>
         </DndContext>
+        )}
 
         <OperacionesModales
           qc={qc}
