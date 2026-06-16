@@ -1,0 +1,38 @@
+Vista previa — 34 agentes
+
+Imprimir
+#	Marca	Serie	Código	No.	Nombres y Apellidos	Ruta	Horario	Munición	Firma
+1	—	—	Cliente	Cliente	ABELINO JOR	2144	04:00–—	—	________
+2	—	—	Cliente	Cliente	ANIBAL CORTEZ LEMUS	2504	04:00–—	—	________
+3	—	—	Cliente	Cliente	CARLOS BA CHEN	2508	04:00–—	—	________
+4	—	—	Cliente	Cliente	BYRON VILDOR TUT ICO	6007	04:00–—	—	________
+5	—	—	Cliente	Cliente	CARLOS ARMANDO LOPEZ CARRANZA	—	—	—	________
+6	TISAS	T0620-21BM13135	Cliente	Cliente	MANUEL CAAL CAAL	5960	08:21–—	—	________
+7	—	—	Cliente	Cliente	DIEGO SAJIC RODRIGUEZ	1960	04:00–—	—	________
+8	—	—	Cliente	Cliente	EDUARDO EFRAIN ICAL PAN	2911	04:00–—	—	________
+9	—	—	Cliente	Cliente	FELICIANO MAAS AC	2335	04:00–—	—	________
+10	—	—	Cliente	Cliente	FRANCISCO DE FRANCISCO PEDRO	2632	04:00–—	—	________
+11	—	—	Cliente	Cliente	GERMAN VILLAGRAN DIAZ	1933	04:00–—	—	________
+12	—	—	Cliente	Cliente	JOSE PORFIRIO ALVARADO	2022	04:00–—	—	________
+13	—	—	Cliente	Cliente	JOSE VIDAL CARCAMO ROMERO	2336	04:00–—	—	________
+14	—	—	Cliente	Cliente	JOSUE ADAN GARCIA RIVAS	1630	04:00–—	—	________
+15	—	—	Cliente	Cliente	JUBENTINO COY	2635	04:00–—	—	________
+16	—	—	Cliente	Cliente	LEONARDO SOLIS BARRIENTOS	2936	04:00–—	—	________
+17	—	—	Cliente	Cliente	LORENZO CAAL	1960	04:00–—	—	________
+18	—	—	Cliente	Cliente	LORENZO DE JESUS PEREZ CANO	3529	04:00–—	—	________
+19	—	—	Cliente	Cliente	MARCIAL PEREZ CANO	2936	04:00–—	—	________
+20	—	—	Cliente	Cliente	MARIO XICAY SACACH	5960	04:00–—	—	________
+21	—	—	Cliente	Cliente	MARTIN TAUTIU AJTZIJ	2632	04:00–—	—	________
+22	—	—	Cliente	Cliente	NOE LOPEZ ALEJANDRO	6007	04:00–—	—	________
+23	—	—	Cliente	Cliente	EDGAR RENE ACTE ICO	2502	04:00–—	—	________
+24	—	—	Cliente	Cliente	RICARDO XOL TZIB	2627	04:00–—	—	________
+25	—	—	Cliente	Cliente	SANTOS DE JESUS PEREZ CANO	2936	04:00–—	—	________
+26	—	—	Cliente	Cliente	SERGIO OBENIEL MITA RAMOS	2332	04:00–—	—	________
+27	—	—	Cliente	Cliente	SILVA YOHAN BRYAN DELGADO GOMEZ	—	—	—	________
+28	—	—	Cliente	Cliente	DENIS SUB CHUB	2911	04:00–—	—	________
+29	—	—	Cliente	Cliente	MARIO TECU GONZALEZ	1962	04:00–—	—	________
+30	—	—	Cliente	Cliente	JULIO CESAR CAAL QUIB	2927	04:00–—	—	________
+31	—	—	Cliente	Cliente	MIGUEL PU CASTRO	1962	04:00–—	—	________
+32	—	—	Cliente	Cliente	NELSON RIGOBERTO TECU GONZALEZ	2502	04:00–—	—	________
+33	—	—	Cliente	Cliente	WALDEMAR TUN POP	—	—	—	________
+34	—	—	Cliente	Cliente	MAYNOR POP	2932	04:00–—	—	________

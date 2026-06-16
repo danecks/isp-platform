@@ -13,6 +13,8 @@ En el tablero de custodias, cada slot puede tener una fila en `custodia_asignaci
 
 **Why:** el director reportó custodios con boleta de falta que seguían en el pizarrón; el diagnóstico (producción read-only) mostró titulares-asignados-a-sí-mismos con falta hoy.
 
+**El reporte impreso es otra fuente.** El pizarrón y la "hoja imprimible" de custodias (GET `/custodias/cliente/:id/hoja-imprimible`) NO comparten consulta: arreglar el tablero no arregla el reporte. La hoja lee `custodia_asignacion_diaria JOIN employees` y debe aplicar el mismo cruce de faltas con `NOT EXISTS` sobre `eventos_rrhh` (tipo_evento='falta', fecha del día, estado NOT IN ('anulado','cancelado')) o seguirá imprimiendo al ausente. Regla general: cualquier salida (pizarrón, hoja, export) que liste custodios del día debe replicar el cruce de faltas.
+
 # Ruta de agente externo (employee_id NULL)
 
 Los agentes externos en custodia se identifican por `slot_numero`, no por `employee_id` (que es NULL en `custodia_asignacion_diaria`). Para capturar/editar su ruta del día:

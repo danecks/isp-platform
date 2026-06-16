@@ -514,6 +514,16 @@ custodiasClienteRouter.get("/custodias/cliente/:id/hoja-imprimible", async (req,
              ON pm.puesto_id = arm.puesto_id
             AND pm.activo = TRUE
       WHERE cad.cliente_id = $1 AND cad.fecha = $2::date
+        -- Excluir custodios con boleta de falta registrada hoy: si el agente
+        -- asignado tiene una 'falta' vigente en eventos_rrhh para esta fecha,
+        -- no debe imprimirse en la hoja de ruta (mismo cruce que el pizarrón).
+        AND NOT EXISTS (
+          SELECT 1 FROM eventos_rrhh er
+          WHERE er.employee_id = cad.employee_id
+            AND er.tipo_evento = 'falta'
+            AND er.fecha::date = $2::date
+            AND er.estado NOT IN ('anulado', 'cancelado')
+        )
       ORDER BY cad.slot_numero, e.nombre_completo
     `, [clienteId, fecha]);
 
