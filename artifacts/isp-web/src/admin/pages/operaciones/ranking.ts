@@ -43,6 +43,39 @@ export function rankCandidatos(pool: Pool, zonaId: number | null | undefined): A
   for (const a of pool.disponibles)      result.push(toRanked(a, "disponible"));
   for (const a of pool.descansandoCiclo) result.push(toRanked(a, "descansandoCiclo"));
 
+  // Contingencia operativa (P5): supervisores y jefes de servicio vienen en
+  // listas aparte del pool (el backend los excluye de disponibles/descanso).
+  // Se inyectan aquí para que puedan cubrir una falta o un puesto descubierto,
+  // sin cambiar la titularidad (el backend lo marca como cobertura_supervisor).
+  const aContingencia = (
+    src: { id: number; nombre_completo: string; zona_operativa_id: number | null; puesto: string | null },
+    tipo: "supervisor" | "jefe_servicio",
+  ): AgenteRankeado => {
+    const mismaZona = !!zonaId && src.zona_operativa_id === zonaId;
+    return {
+      ...(src as any),
+      tipo_personal: tipo,
+      grupo: "P5",
+      motivos: ["contingencia", ...(mismaZona ? ["misma_zona"] : [])],
+      score: 20 + (mismaZona ? 10 : 0),
+    } as AgenteRankeado;
+  };
+
+  // Evita duplicar a quien ya esté rankeado (p. ej. inyectado en otra lista del pool).
+  const yaIncluidos = new Set(result.map((r) => r.id));
+  for (const s of (pool.supervisores ?? [])) {
+    if (s.faltando || s.estado_laboral !== "activo" || s.puede_cubrir === false) continue;
+    if (yaIncluidos.has(s.id)) continue;
+    yaIncluidos.add(s.id);
+    result.push(aContingencia(s, "supervisor"));
+  }
+  for (const j of (pool.jefes_servicio ?? [])) {
+    if (j.faltando || j.estado_laboral !== "activo") continue;
+    if (yaIncluidos.has(j.id)) continue;
+    yaIncluidos.add(j.id);
+    result.push(aContingencia(j, "jefe_servicio"));
+  }
+
   // Ordenar: primero por grupo (P1→P5) luego por score descendente
   const grupoOrd: Record<GrupoRanking, number> = { P1: 0, P2: 1, P3: 2, P4: 3, P5: 4 };
   return result.sort((a, b) => {
