@@ -27,6 +27,8 @@ export function CustodiaSlotItem({
   const cubierto = puesto.estado === "cubierto" && (!!puesto.agente_id || esExterno);
   const tieneTitular = !!puesto.titular_employee_id;
   const titularFaltando = (puesto as any).titular_faltando === true;
+  const titularCubriendoOtro = (puesto as any).titular_cubriendo_otro === true;
+  const titularCubriendoDonde = (puesto as any).titular_cubriendo_donde as string | null;
   const esRelevo = cubierto && tieneTitular && puesto.agente_id !== puesto.titular_employee_id;
   const descansoExcedente = puesto.descanso_por_ciclo === true;
   const slotVacio = (puesto as any).tiene_slot_vacio === true;
@@ -39,7 +41,7 @@ export function CustodiaSlotItem({
         ? "bg-[#0f1208] border-amber-500/30 hover:border-amber-400/40"
         : cubierto
           ? "bg-[#0f1208] border-amber-500/25 hover:border-amber-400/35"
-          : titularFaltando
+          : (titularFaltando || titularCubriendoOtro)
             ? "bg-[#0c0a16] border-red-500/30 hover:border-red-400/40"
             : "bg-[#0c0a16] border-red-500/20 hover:border-red-400/35";
 
@@ -95,6 +97,13 @@ export function CustodiaSlotItem({
             <div>
               <p className="text-[11px] text-red-400 font-medium truncate">Faltante</p>
               <p className="text-[9px] text-red-400/60 truncate">Titular: {puesto.titular_nombre}</p>
+            </div>
+          ) : titularCubriendoOtro ? (
+            <div>
+              <p className="text-[11px] text-red-400 font-medium truncate">Descubierto</p>
+              <p className="text-[9px] text-red-400/60 truncate">
+                Titular cubriendo{titularCubriendoDonde ? ` en ${titularCubriendoDonde}` : " en otro puesto"}: {puesto.titular_nombre}
+              </p>
             </div>
           ) : slotVacio ? (
             <p className="text-[11px] text-white/25 italic">

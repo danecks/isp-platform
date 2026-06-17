@@ -633,6 +633,35 @@ router.get("/operaciones/tablero", async (req, res) => {
       for (const f of faltasRows) custodiaFaltaSet.add(Number(f.employee_id));
     }
 
+    // Personas que HOY están cubriendo en OTRO lado (otra custodia u otro puesto).
+    // Si un titular de custodia aparece aquí y no tiene asignación en su propio
+    // slot, su slot de origen queda DESCUBIERTO automáticamente: no puede estar en
+    // dos lugares a la vez. NO es una falta (sigue trabajando), por eso no descuenta;
+    // es puramente derivado y se auto-corrige si se quita la cobertura del otro lado.
+    const cubriendoOtroLadoMap = new Map<number, string>();
+    {
+      const { rows: cobRows } = await pool.query(`
+        SELECT t.employee_id, t.ubicacion FROM (
+          SELECT cad.employee_id,
+                 COALESCE(c.nombre_comercial, c.nombre) AS ubicacion, 1 AS pr
+            FROM custodia_asignacion_diaria cad
+            JOIN clients c ON c.id = cad.cliente_id
+           WHERE cad.fecha = $1::date AND cad.employee_id IS NOT NULL
+          UNION ALL
+          SELECT seg.employee_id,
+                 COALESCE(po.cliente_nombre, po.nombre) AS ubicacion, 2 AS pr
+            FROM cobertura_segmentos seg
+            JOIN puestos_operativos po ON po.id = seg.puesto_id
+           WHERE seg.fecha = $1::date AND seg.employee_id IS NOT NULL
+        ) t
+        ORDER BY t.pr
+      `, [fechaConsultada]);
+      for (const r of cobRows) {
+        const eid = Number(r.employee_id);
+        if (!cubriendoOtroLadoMap.has(eid)) cubriendoOtroLadoMap.set(eid, r.ubicacion);
+      }
+    }
+
     // Excepciones del día (Fase 1): { cliente_id -> cantidad }
     const excepcionMap = new Map<number, number>();
     {
@@ -709,6 +738,14 @@ router.get("/operaciones/tablero", async (req, res) => {
           !!asig && !asig.es_externo && custodiaFaltaSet.has(Number(asig.employee_id));
         // Slot por sobre la demanda del día: si hay titular fijo, cuenta como descanso.
         const enDescansoExcedente = i > fuerzaHoy && !!titular && !asig;
+        // Titular SIN asignación en su propio slot pero que HOY cubre en otro lado
+        // → su slot de origen queda descubierto (no puede estar en dos lugares).
+        const titularCubriendoOtro =
+          !!titular && !asig && !titularFaltando && !enDescansoExcedente &&
+          cubriendoOtroLadoMap.has(titular.employee_id);
+        const titularCubriendoDonde = titularCubriendoOtro && titular
+          ? cubriendoOtroLadoMap.get(titular.employee_id) ?? null
+          : null;
 
         let agente_id: number | null = null;
         let agente_nombre: string | null = null;
@@ -730,7 +767,7 @@ router.get("/operaciones/tablero", async (req, res) => {
               es_relevo_dia = true;
             }
           }
-        } else if (titular && !titularFaltando && !enDescansoExcedente) {
+        } else if (titular && !titularFaltando && !enDescansoExcedente && !titularCubriendoOtro) {
           agente_id = titular.employee_id;
           agente_nombre = titular.nombre;
           estado = "cubierto";
@@ -757,6 +794,8 @@ router.get("/operaciones/tablero", async (req, res) => {
           // falta" (donde el titular sigue disponible). Cuando el asignado falta y
           // ES el titular, titularFaltando ya queda true por sí mismo.
           titular_faltando: titularFaltando || false,
+          titular_cubriendo_otro: titularCubriendoOtro || false,
+          titular_cubriendo_donde: titularCubriendoDonde,
           es_relevo_dia,
           arma_id: arma?.arma_id ?? null,
           arma_codigo: arma?.arma_codigo ?? null,
