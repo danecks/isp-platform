@@ -137,9 +137,13 @@ export function FichaModal({
             <p className="text-xs text-white/50 mt-0.5">{emp.puesto ?? "Colaborador"} · {emp.area ?? "—"}</p>
             <div className="flex flex-wrap items-center gap-2 mt-2">
               <EstadoBadge estado={emp.estadoLaboral} />
-              {emp.sede && (
-                <span className="flex items-center gap-1 text-[10px] text-white/30">
-                  <MapPin className="w-3 h-3" />{emp.sede}
+              {emp.puestoTitularCliente ? (
+                <span className="flex items-center gap-1 text-[10px] text-white/40">
+                  <MapPin className="w-3 h-3 text-primary" />{emp.puestoTitularCliente}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-[10px] text-white/25">
+                  <MapPin className="w-3 h-3" />Sin puesto asignado
                 </span>
               )}
               {emp.dpi && (

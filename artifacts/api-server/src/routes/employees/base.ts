@@ -53,9 +53,25 @@ router.get("/employees", async (req, res) => {
              COALESCE(e.estado_igss, 'no_activo') AS estado_igss,
              e.fecha_inicio_igss,
              COALESCE(e.frecuencia_pago, 'quincenal') AS frecuencia_pago,
-             c.nombre AS cliente_nombre
+             c.nombre AS cliente_nombre,
+             tit.cliente_nombre AS puesto_titular_cliente,
+             tit.puesto_nombre  AS puesto_titular_nombre
       FROM employees e
       LEFT JOIN clients c ON c.id = e.cliente_id
+      LEFT JOIN LATERAL (
+        -- Ubicación REAL: puesto donde la persona es titular. Cubre los tres
+        -- modelos de titularidad (slots 24x24, titulares, titular legacy).
+        SELECT po.cliente_nombre, po.nombre AS puesto_nombre
+        FROM puestos_operativos po
+        WHERE COALESCE(po.activo, TRUE) = TRUE
+          AND (
+            po.titular_employee_id = e.id
+            OR EXISTS (SELECT 1 FROM puesto_slots ps    WHERE ps.puesto_id = po.id AND ps.empleado_id = e.id AND ps.activo = TRUE)
+            OR EXISTS (SELECT 1 FROM puesto_titulares pt WHERE pt.puesto_id = po.id AND pt.employee_id = e.id AND pt.activo = TRUE)
+          )
+        ORDER BY po.id
+        LIMIT 1
+      ) tit ON TRUE
       ${where}
       ORDER BY e.tipo_personal, e.nombre_completo
     `, params);

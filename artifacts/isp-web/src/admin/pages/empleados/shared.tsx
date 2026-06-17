@@ -19,6 +19,9 @@ export interface Empleado {
   area: string | null;
   estadoLaboral: string;
   sede: string | null;
+  // Ubicación REAL derivada de la titularidad vigente (no el texto fijo de la ficha)
+  puestoTitularCliente: string | null;
+  puestoTitularNombre: string | null;
   supervisorNombre: string | null;
   supervisorId: number | null;
   clienteId: number | null;
