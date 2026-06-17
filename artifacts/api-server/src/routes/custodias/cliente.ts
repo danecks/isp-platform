@@ -233,7 +233,7 @@ custodiasClienteRouter.delete("/custodias/cliente/:id/desasignar", async (req, r
           AND NOT EXISTS (
             SELECT 1 FROM agente_fichajes
              WHERE employee_id = $3 AND cliente_id = $1
-               AND DATE(timestamp AT TIME ZONE 'America/Guatemala') = $2::date
+               AND DATE(registrado_en AT TIME ZONE 'America/Guatemala') = $2::date
           )`,
       [clienteId, fecha, employeeId]
     );
