@@ -1150,8 +1150,7 @@ eventosRrhhRouter.post("/rrhh/horas-extra-cash/anular", async (req, res) => {
       await client.query(
         `UPDATE incentivos_cash_cobertura
          SET estado = 'cancelado',
-             observaciones = COALESCE(observaciones, '') || $2,
-             updated_at = NOW()
+             observaciones = COALESCE(observaciones, '') || $2
          WHERE id = $1`,
         [realId, nota]
       );
