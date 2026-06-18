@@ -51,7 +51,7 @@ function fmtFechaLarga(s?: string | null): string {
 export function generarActaPdf(datos: DatosActaPdf): jsPDF {
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const W = doc.internal.pageSize.getWidth();
-  const M = 56; // margen
+  const M = 50; // margen
   let y = M;
 
   const { amonestacion: a, config, empleado, puesto } = datos;
@@ -63,25 +63,25 @@ export function generarActaPdf(datos: DatosActaPdf): jsPDF {
 
   // Encabezado
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
+  doc.setFontSize(12);
   doc.text(empresaNombre.toUpperCase(), W / 2, y, { align: "center" });
-  y += 16;
+  y += 14;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.text(direccion, W / 2, y, { align: "center" });
   if (config?.nit_empresa) { y += 11; doc.text(`NIT: ${config.nit_empresa}`, W / 2, y, { align: "center" }); }
-  y += 22;
+  y += 14;
 
   // Título
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   const titulo = a.tipo === "acta_administrativa"
     ? `ACTA ADMINISTRATIVA No. ${a.acta_numero ?? a.id}`
     : a.tipo === "economica"
       ? `AMONESTACIÓN ECONÓMICA No. ${a.id}`
       : `LLAMADA DE ATENCIÓN No. ${a.id}`;
   doc.text(titulo, W / 2, y, { align: "center" });
-  y += 24;
+  y += 16;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
@@ -89,30 +89,30 @@ export function generarActaPdf(datos: DatosActaPdf): jsPDF {
   // Cuerpo introductorio
   const fechaTxt = fmtFechaLarga(a.fecha);
   const intro = `En ${ubicacion}, siendo el día ${fechaTxt}, comparecen por una parte el señor(a) ${repNombre}, quien se identifica con DPI ${repDpi}, en su calidad de representante legal de ${empresaNombre}; y por la otra parte el(la) colaborador(a) ${empleado?.nombre_completo || a.empleado_nombre}, quien se identifica con DPI ${empleado?.dpi || "—"}, con cargo de ${puesto?.puesto_nombre || empleado?.cargo || "—"}, asignado(a) al cliente ${puesto?.cliente_nombre || a.cliente_nombre || "—"}, con fecha de ingreso ${empleado?.fecha_ingreso ? fmtFechaLarga(empleado.fecha_ingreso) : "—"}; con el objeto de hacer constar lo siguiente:`;
-  y = wrapText(doc, intro, M, y, W - 2 * M, 13);
-  y += 14;
+  y = wrapText(doc, intro, M, y, W - 2 * M, 12);
+  y += 8;
 
   // Hechos
   doc.setFont("helvetica", "bold");
-  doc.text("PRIMERO — HECHOS:", M, y); y += 14;
+  doc.text("PRIMERO — HECHOS:", M, y); y += 12;
   doc.setFont("helvetica", "normal");
   const hechos = `Se levanta el presente documento por el siguiente motivo: ${a.motivo}.${a.descripcion ? " " + a.descripcion : ""}`;
-  y = wrapText(doc, hechos, M, y, W - 2 * M, 13);
-  y += 12;
+  y = wrapText(doc, hechos, M, y, W - 2 * M, 12);
+  y += 8;
 
   // Fundamento legal (solo acta)
   if (a.tipo === "acta_administrativa") {
     doc.setFont("helvetica", "bold");
-    doc.text("SEGUNDO — FUNDAMENTO LEGAL:", M, y); y += 14;
+    doc.text("SEGUNDO — FUNDAMENTO LEGAL:", M, y); y += 12;
     doc.setFont("helvetica", "normal");
     const fund = `El presente acto se fundamenta en el ${a.articulo_legal || "Art. 77 del Código de Trabajo de Guatemala"}, inciso ${a.causal_legal || "—"}, que se transcribe en lo conducente como motivo de la presente acta administrativa.`;
-    y = wrapText(doc, fund, M, y, W - 2 * M, 13);
-    y += 12;
+    y = wrapText(doc, fund, M, y, W - 2 * M, 12);
+    y += 8;
   }
 
   // Sanción
   doc.setFont("helvetica", "bold");
-  doc.text(a.tipo === "acta_administrativa" ? "TERCERO — SANCIÓN:" : "SEGUNDO — SANCIÓN:", M, y); y += 14;
+  doc.text(a.tipo === "acta_administrativa" ? "TERCERO — SANCIÓN:" : "SEGUNDO — SANCIÓN:", M, y); y += 12;
   doc.setFont("helvetica", "normal");
   let sancion = "";
   if (a.tipo === "llamada_atencion") {
@@ -133,16 +133,16 @@ export function generarActaPdf(datos: DatosActaPdf): jsPDF {
       sancion = partes.join(" ");
     }
   }
-  y = wrapText(doc, sancion, M, y, W - 2 * M, 13);
-  y += 18;
+  y = wrapText(doc, sancion, M, y, W - 2 * M, 12);
+  y += 12;
 
   // Conformidad
   doc.setFont("helvetica", "bold");
-  doc.text(a.tipo === "acta_administrativa" ? "CUARTO — CONFORMIDAD:" : "TERCERO — CONFORMIDAD:", M, y); y += 14;
+  doc.text(a.tipo === "acta_administrativa" ? "CUARTO — CONFORMIDAD:" : "TERCERO — CONFORMIDAD:", M, y); y += 12;
   doc.setFont("helvetica", "normal");
   const conf = "Los comparecientes manifiestan estar enterados del contenido de la presente, de su validez legal y de los efectos que produce. Para constancia firman al pie quien la levanta y el(la) colaborador(a) sancionado(a). En caso de negativa de firma del colaborador, se hará constar dicha circunstancia.";
-  y = wrapText(doc, conf, M, y, W - 2 * M, 13);
-  y += 36;
+  y = wrapText(doc, conf, M, y, W - 2 * M, 12);
+  y += 24;
 
   // Firmas — dos columnas
   const colW = (W - 2 * M - 40) / 2;
