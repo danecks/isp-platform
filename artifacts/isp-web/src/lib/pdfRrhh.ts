@@ -178,6 +178,7 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
     titulo: "ACTA ADMINISTRATIVA",
     subtitulo: `Acta No. ${String(datos.numero_acta).padStart(4, "0")}`,
     preparedBy: "Departamento de Recursos Humanos",
+    compact: true,
   });
 
   await pdf.build();
@@ -203,14 +204,16 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
     `En la ciudad de Guatemala, el día ${fechaHoy}, siendo las ${horaActual} horas, ` +
     `constituido(a) en ${datos.direccion_empresa || "las oficinas de la empresa"}, ` +
     `sede de la empresa ${datos.nombre_empresa || "INVESTIGACIONES Y SEGURIDAD PROFESIONAL, S.A."}, ` +
-    `comparece:`
+    `comparece:`,
+    8,
   );
   pdf.addEspacio(1);
 
   pdf.addTextoBold("POR PARTE DE LA EMPRESA:", 8);
   pdf.addTextoJustificado(
     `${datos.representante_nombre}, DPI ${dpiEnLetras(datos.representante_dpi)}, ` +
-    `actuando en calidad de Representante Legal.`
+    `actuando en calidad de Representante Legal.`,
+    8,
   );
   pdf.addEspacio(1);
 
@@ -220,9 +223,10 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
     `quien labora para la empresa desde el ${fechaIngreso}, ` +
     `desempeñando el puesto de ${datos.empleado_cargo || "Agente de Seguridad"} ` +
     `en las instalaciones del cliente ${datos.cliente_nombre || "asignado"}, ` +
-    `puesto operativo "${datos.puesto_nombre || "asignado"}".`
+    `puesto operativo "${datos.puesto_nombre || "asignado"}".`,
+    8,
   );
-  pdf.addEspacio(2);
+  pdf.addEspacio(1);
   pdf.addLinea();
   pdf.addEspacio(1);
 
@@ -232,6 +236,7 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
   if (causalesTexto) {
     pdf.addTextoJustificado(
       `El trabajador ${datos.empleado_nombre.toUpperCase()} ha incurrido en la(s) siguiente(s) falta(s):`,
+      8,
     );
     pdf.addEspacio(1);
     pdf.addTextoJustificado(causalesTexto, 8, 5);
@@ -239,7 +244,7 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
   }
 
   if (datos.hechos) {
-    pdf.addTextoJustificado(datos.hechos);
+    pdf.addTextoJustificado(datos.hechos, 8);
     pdf.addEspacio(1);
   }
 
@@ -279,23 +284,25 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
     `${articulosStr} del Código de Trabajo de Guatemala (Decreto 1441 del Congreso de la República ` +
     `y sus reformas), se deja constancia de los hechos para los efectos legales correspondientes. ` +
     `El trabajador queda formalmente notificado de que la reincidencia en estas faltas puede dar ` +
-    `lugar a la terminación de la relación laboral sin responsabilidad para el patrono.`
+    `lugar a la terminación de la relación laboral sin responsabilidad para el patrono.`,
+    7.5,
   );
   pdf.addEspacio(1);
 
   pdf.addTextoJustificado(
     `No habiendo más que hacer constar, se da por terminada la presente acta en el mismo lugar y ` +
     `fecha de su inicio, la cual consta de una hoja útil, firmada y sellada por los comparecientes ` +
-    `que en ella intervinieron, quienes ratifican su contenido.`
+    `que en ella intervinieron, quienes ratifican su contenido.`,
+    7.5,
   );
 
-  pdf.addEspacio(8);
+  pdf.addEspacio(6);
 
   pdf.addFirmaDoble(
     { label: "Representante Legal", nombre: datos.representante_nombre },
     { label: "Trabajador Citado", nombre: datos.empleado_nombre.toUpperCase() },
   );
-  pdf.addEspacio(8);
+  pdf.addEspacio(5);
   pdf.addFirmaDoble(
     { label: "Testigo 1", nombre: "" },
     { label: "Testigo 2", nombre: "" },

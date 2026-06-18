@@ -33,6 +33,10 @@ interface PdfOptions {
   /** Orientación de la página. Por defecto "portrait". Usar "landscape"
    *  para reportes con muchas columnas (p. ej. Libro de Salarios). */
   orientation?: "portrait" | "landscape";
+  /** Encabezado compacto (membrete más bajo y logo más pequeño). Se usa en
+   *  documentos de una sola hoja como el acta administrativa para ganar
+   *  espacio vertical sin perder el membrete. Por defecto false. */
+  compact?: boolean;
 }
 
 interface ResumenCard {
@@ -81,6 +85,7 @@ export class IspPdf {
     this.pageWidth = this.doc.internal.pageSize.getWidth();
     this.pageHeight = this.doc.internal.pageSize.getHeight();
     this.contentWidth = this.pageWidth - this.marginL - this.marginR;
+    if (opts.compact) this.headerHeight = 28;
   }
 
   // ─── Carga de logo ──────────────────────────────────────────────────────────
@@ -105,6 +110,14 @@ export class IspPdf {
   // ─── Encabezado membretado ──────────────────────────────────────────────────
   private drawHeader(): void {
     const doc = this.doc;
+    const c = this.opts.compact === true;
+
+    // Posiciones verticales (compactas o normales)
+    const logoY = c ? 4 : 7;
+    const logoSize = c ? 20 : 28;
+    const lineY1 = c ? 11 : 15;     // nombre empresa / título
+    const lineY2 = c ? 16 : 21.5;   // 2ª línea empresa / subtítulo
+    const lineY3 = c ? 21 : 28;     // tagline / emitido
 
     // Franja superior navy
     doc.setFillColor(...COLORS.navy);
@@ -115,41 +128,40 @@ export class IspPdf {
     doc.rect(0, this.headerHeight, this.pageWidth, 1.5, "F");
 
     // Logo
-    const logoSize = 28;
     if (this.logoDataUrl) {
       try {
-        doc.addImage(this.logoDataUrl, "JPEG", this.marginL, 7, logoSize, logoSize);
+        doc.addImage(this.logoDataUrl, "JPEG", this.marginL, logoY, logoSize, logoSize);
       } catch {
-        this.drawLogoPlaceholder(this.marginL, 7, logoSize);
+        this.drawLogoPlaceholder(this.marginL, logoY, logoSize);
       }
     } else {
-      this.drawLogoPlaceholder(this.marginL, 7, logoSize);
+      this.drawLogoPlaceholder(this.marginL, logoY, logoSize);
     }
 
     // Nombre de la empresa
     const textX = this.marginL + logoSize + 5;
     doc.setTextColor(...COLORS.white);
-    doc.setFontSize(13);
+    doc.setFontSize(c ? 11 : 13);
     doc.setFont("helvetica", "bold");
-    doc.text("INVESTIGACIONES Y SEGURIDAD", textX, 15);
-    doc.text("PROFESIONAL, S.A.", textX, 21.5);
+    doc.text("INVESTIGACIONES Y SEGURIDAD", textX, lineY1);
+    doc.text("PROFESIONAL, S.A.", textX, lineY2);
 
-    doc.setFontSize(8.5);
+    doc.setFontSize(c ? 7.5 : 8.5);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...COLORS.gold);
-    doc.text("Seguridad • Confianza • Resultados", textX, 28);
+    doc.text("Seguridad • Confianza • Resultados", textX, lineY3);
 
     // Título del reporte (derecha)
     doc.setTextColor(...COLORS.white);
-    doc.setFontSize(11);
+    doc.setFontSize(c ? 10 : 11);
     doc.setFont("helvetica", "bold");
-    doc.text(this.opts.titulo, this.pageWidth - this.marginR, 15, { align: "right" });
+    doc.text(this.opts.titulo, this.pageWidth - this.marginR, lineY1, { align: "right" });
 
     if (this.opts.subtitulo) {
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(...COLORS.gold);
-      doc.text(this.opts.subtitulo, this.pageWidth - this.marginR, 21.5, { align: "right" });
+      doc.text(this.opts.subtitulo, this.pageWidth - this.marginR, lineY2, { align: "right" });
     }
 
     // Fecha de emisión (puede ser sobrescrita por opciones)
@@ -169,7 +181,7 @@ export class IspPdf {
     });
     doc.setFontSize(7.5);
     doc.setTextColor(200, 210, 225);
-    doc.text(`Emitido: ${fechaEmision}`, this.pageWidth - this.marginR, 28, { align: "right" });
+    doc.text(`Emitido: ${fechaEmision}`, this.pageWidth - this.marginR, lineY3, { align: "right" });
 
     // Meta-info debajo del encabezado
     this.currentY = this.headerHeight + 6;
@@ -195,7 +207,7 @@ export class IspPdf {
     doc.setDrawColor(...COLORS.border);
     doc.setLineWidth(0.3);
     doc.line(this.marginL, this.currentY, this.pageWidth - this.marginR, this.currentY);
-    this.currentY += 5;
+    this.currentY += c ? 3 : 5;
   }
 
   private drawLogoPlaceholder(x: number, y: number, size: number): void {
@@ -412,7 +424,7 @@ export class IspPdf {
   }
 
   addFirmaDoble(izq: { label: string; nombre: string }, der: { label: string; nombre: string }): void {
-    this.checkPageBreak(30);
+    this.checkPageBreak(14);
     const doc = this.doc;
     const halfW = this.contentWidth / 2 - 5;
     const xIzq = this.marginL + halfW / 2;
