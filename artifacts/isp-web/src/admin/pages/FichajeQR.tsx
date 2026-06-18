@@ -172,7 +172,7 @@ function NuevoDispositivoModal({
 
   useEffect(() => {
     if (tipo === "puesto") {
-      f("/puestos-gps").then(r => r.json()).then(data => setPuestos(data)).catch(() => {});
+      f("/puestos-gps?todos=1").then(r => r.json()).then(data => setPuestos(data)).catch(() => {});
     }
     if (tipo === "custodia" && clientes.length === 0) {
       f("/operaciones/clientes-disponibles").then(r => r.json()).then(setClientes).catch(() => {});
@@ -286,7 +286,7 @@ function NuevoDispositivoModal({
             <select
               value={puestoId}
               onChange={e => setPuestoId(e.target.value ? Number(e.target.value) : "")}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20 [&_option]:bg-slate-800 [&_option]:text-slate-100"
             >
               <option value="">Sin puesto específico</option>
               {puestos.map(p => (
@@ -304,7 +304,7 @@ function NuevoDispositivoModal({
               <select
                 value={clienteId}
                 onChange={e => setClienteId(e.target.value ? Number(e.target.value) : "")}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20 [&_option]:bg-slate-800 [&_option]:text-slate-100"
               >
                 <option value="">— Selecciona un cliente —</option>
                 {clientes.map(c => (
@@ -366,7 +366,7 @@ function EditarDispositivoModal({
 
   useEffect(() => {
     if (tipo === "puesto" && puestos.length === 0) {
-      f("/puestos-gps").then(r => r.json()).then(setPuestos).catch(() => {});
+      f("/puestos-gps?todos=1").then(r => r.json()).then(setPuestos).catch(() => {});
     }
     if (tipo === "custodia" && clientes.length === 0) {
       f("/operaciones/clientes-disponibles").then(r => r.json()).then(setClientes).catch(() => {});
@@ -449,7 +449,7 @@ function EditarDispositivoModal({
           <div>
             <label className="text-white/50 text-xs font-semibold uppercase tracking-wide block mb-1.5">Puesto asociado</label>
             <select value={puestoId} onChange={e => setPuestoId(e.target.value ? Number(e.target.value) : "")}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20">
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20 [&_option]:bg-slate-800 [&_option]:text-slate-100">
               <option value="">Sin puesto específico</option>
               {puestos.map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.cliente_nombre}</option>)}
             </select>
@@ -461,7 +461,7 @@ function EditarDispositivoModal({
             <div>
               <label className="text-white/50 text-xs font-semibold uppercase tracking-wide block mb-1.5">Cliente de custodia</label>
               <select value={clienteId} onChange={e => setClienteId(e.target.value ? Number(e.target.value) : "")}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20">
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/80 outline-none focus:border-white/20 [&_option]:bg-slate-800 [&_option]:text-slate-100">
                 <option value="">— Selecciona —</option>
                 {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre_comercial || c.nombre}</option>)}
               </select>
@@ -1016,7 +1016,7 @@ export default function FichajeQR() {
             <div className="bg-white/5 border border-amber-500/20 rounded-2xl p-4 mb-4 space-y-3">
               <p className="text-amber-300/70 text-xs font-semibold uppercase tracking-wide">Nueva asignación de munición</p>
               <select value={municionForm.puesto_id} onChange={e => setMunicionForm(prev => prev ? { ...prev, puesto_id: e.target.value } : prev)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white/80 outline-none">
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white/80 outline-none [&_option]:bg-slate-800 [&_option]:text-slate-100">
                 <option value="">Seleccionar puesto…</option>
                 {puestosLista.map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.cliente_nombre}</option>)}
               </select>

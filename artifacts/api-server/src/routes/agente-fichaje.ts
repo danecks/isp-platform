@@ -2643,12 +2643,17 @@ agenteFichajeRouter.get("/agente/fichajes", async (req, res) => {
 // GET /api/puestos-gps
 agenteFichajeRouter.get("/puestos-gps", async (req, res) => {
   try {
+    // Por defecto solo puestos cubiertos (uso GPS/fichaje). Con ?todos=1 devuelve
+    // todos los puestos activos — necesario para asignar un teléfono a un puesto
+    // aunque hoy esté descubierto.
+    const incluirTodos = req.query.todos === "1" || req.query.todos === "true";
+    const filtroEstado = incluirTodos ? `po.activo = TRUE` : `po.estado = 'cubierto'`;
     const { rows } = await pool.query(`
       SELECT po.id, po.nombre, po.cliente_nombre, po.agente_nombre, po.estado,
              pg.id AS gps_id, pg.latitud, pg.longitud, pg.radio_metros, pg.updated_at
       FROM puestos_operativos po
       LEFT JOIN puestos_gps pg ON pg.puesto_id = po.id
-      WHERE po.estado = 'cubierto'
+      WHERE ${filtroEstado}
       ORDER BY po.cliente_nombre, po.nombre
     `);
     res.json(rows);
