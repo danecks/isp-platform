@@ -469,7 +469,7 @@ export function DroppablePuesto({
                 <p className="text-sm">{isOver ? "Soltar aquí" : isAgenteSeleccionado ? "Toca para asignar" : "Puesto descubierto"}</p>
               </div>
             )}
-            {onAgenteExterno && !cubierto && !descansoCiclo && (
+            {onAgenteExterno && !cubierto && (
               <button
                 onClick={e => { e.stopPropagation(); onAgenteExterno(puesto); }}
                 className="mt-1.5 flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-teal-300/80 bg-teal-500/10 border border-teal-500/25 hover:bg-teal-500/20 hover:text-teal-300 rounded-md transition-colors"
