@@ -11,7 +11,9 @@ Los botones de descarga de **contratos**, **actas administrativas** y **constanc
 - Frontend sube con `guardarEnDrive(tipo, nombre, base64)` → `POST /api/drive/upload` body `{tipo, nombre, contenidoBase64}`.
 - Backend `googleDrive.ts` usa `@replit/connectors-sdk` (connector `google-drive`, scope `drive.file`): `c.proxy(connector, path, {method,headers,body})` para list/create carpeta y upload multipart/related; `c.listConnections({connector_names})` para estado. NO cachear el cliente entre requests (se crea barato); SÍ cachear folderName→id en memoria.
 
-**Qué NO se tocó (a propósito, siguen descargando):** boleta de descuento (rama no-HE), acta de anulación, KioscoSolicitudes, BatchActasPanel, PlantillasContrato (preview), kpi.tsx. Usan el default `"descargar"`.
+**Qué NO se tocó (a propósito, siguen descargando):** boleta de descuento (rama no-HE), acta de anulación, KioscoSolicitudes, PlantillasContrato (preview), kpi.tsx. Usan el default `"descargar"`.
+
+**Batch de actas (BatchActasPanel.tsx) SÍ sube a Drive** (decisión del director): itera los eventos filtrados, llama `generarActaAdministrativa(datos, "drive")` + `guardarEnDrive("acta", filename, base64, ev.fecha)` con la MISMA lógica que las individuales (nombre completo, subcarpeta por mes, dedupe). El toast resume subidas/repetidas/errores. Se renombraron labels: "Batch de Actas a Google Drive" y "Subir N acta(s) a Drive".
 
 **Por qué `/api/drive/*` NO está en ROUTE_MODULO_MAP (solo "sesión requerida"):**
 La ruta la consumen DOS módulos distintos — contratos desde *empleados*, actas/HE desde *eventos_rrhh*. Mapearla a un único módulo bloquearía uno de los dos flujos. Y el endpoint solo sube un PDF ya generado por el usuario al Drive propio de la empresa (no expone datos), así que la autorización efectiva ya la da el acceso del usuario a esas pantallas. Code review lo marcó como hardening no-bloqueante; se dejó así adrede.

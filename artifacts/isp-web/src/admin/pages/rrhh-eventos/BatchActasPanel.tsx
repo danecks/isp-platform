@@ -3,6 +3,7 @@ import { ChevronDown, Loader2, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { EventoRrhh } from "@/lib/pdfRrhh";
 import { generarActaAdministrativa } from "@/lib/pdfRrhh";
+import { guardarEnDrive } from "@/lib/guardarEnDrive";
 import { construirDatosActa } from "./helpers";
 
 export function BatchActasPanel({ eventos }: { eventos: EventoRrhh[] }) {
@@ -25,19 +26,29 @@ export function BatchActasPanel({ eventos }: { eventos: EventoRrhh[] }) {
   async function imprimirTodo() {
     if (!filtrados.length) return;
     setPrinting(true);
-    let count = 0;
+    let subidas = 0;
+    let repetidas = 0;
+    let errores = 0;
     for (const ev of filtrados) {
       try {
         const datos = await construirDatosActa(ev);
-        await generarActaAdministrativa(datos);
-        count++;
+        const res = await generarActaAdministrativa(datos, "drive");
+        if (res) {
+          const r = await guardarEnDrive("acta", res.filename, res.base64, ev.fecha);
+          if (r.duplicado) repetidas++;
+          else subidas++;
+        }
         await new Promise((r) => setTimeout(r, 180));
       } catch {
+        errores++;
         // continúa con el siguiente
       }
     }
     setPrinting(false);
-    toast({ title: `${count} acta(s) generadas`, description: "Revisa tu carpeta de Descargas." });
+    const partes = [`${subidas} subida(s) a Google Drive`];
+    if (repetidas) partes.push(`${repetidas} ya estaban (no se repitieron)`);
+    if (errores) partes.push(`${errores} con error`);
+    toast({ title: "Actas enviadas a Drive", description: partes.join(" · ") });
   }
 
   return (
@@ -48,7 +59,7 @@ export function BatchActasPanel({ eventos }: { eventos: EventoRrhh[] }) {
       >
         <div className="flex items-center gap-2.5">
           <Printer className="w-4 h-4 text-cyan-400" />
-          <span className="text-sm font-semibold text-white/80">Impresión Batch de Actas</span>
+          <span className="text-sm font-semibold text-white/80">Batch de Actas a Google Drive</span>
           <span className="text-[10px] text-white/30 bg-white/5 border border-white/8 px-2 py-0.5 rounded-full">
             {filtrados.length} evento{filtrados.length !== 1 ? "s" : ""} en rango
           </span>
@@ -85,7 +96,7 @@ export function BatchActasPanel({ eventos }: { eventos: EventoRrhh[] }) {
               className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-xs font-semibold text-white transition-all"
             >
               {printing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
-              {printing ? "Generando..." : `Generar ${filtrados.length} acta(s)`}
+              {printing ? "Subiendo a Drive..." : `Subir ${filtrados.length} acta(s) a Drive`}
             </button>
           </div>
           {filtrados.length > 0 && (
