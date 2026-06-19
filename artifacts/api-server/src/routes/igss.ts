@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { getPermisosForUsername } from "../lib/permisos-middleware";
 
 export const igssRouter = Router();
 
@@ -119,6 +120,75 @@ igssRouter.patch("/igss/clientes/:id/centro", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "PATCH /igss/clientes/:id/centro error");
     res.status(500).json({ error: "Error al actualizar datos IGSS del cliente" });
+  }
+});
+
+// ─── POST /igss/activar-todos ────────────────────────────────────────────────
+// Acción de un solo uso (solo admin): deja a TODOS los colaboradores activos
+// como afectos a IGSS y activa la cobertura IGSS en todos los puestos activos,
+// para que el descuento de IGSS realmente se aplique en la planilla.
+// El director luego quita manualmente los que no aplican (ficha del colaborador).
+igssRouter.post("/igss/activar-todos", async (req, res) => {
+  try {
+    // Autorización segura: NO confiar en el `rol` del header. Resolver el rol
+    // REAL contra la BD por `username` (mismo patrón que anticipos extraordinarios),
+    // porque el middleware valida acceso al módulo pero no reescribe session.rol.
+    let username: string | null = null;
+    const raw = req.headers["x-isp-session"] as string | undefined;
+    if (raw) {
+      try {
+        username = (JSON.parse(raw) as { username?: string }).username ?? null;
+      } catch {
+        username = null;
+      }
+    }
+    const rol = username ? (await getPermisosForUsername(username)).rol : "";
+    if (rol !== "admin") {
+      return res.status(403).json({ error: "Solo un administrador puede ejecutar esta acción" });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const empRes = await client.query(
+        `UPDATE employees SET
+           aplica_igss_general = TRUE,
+           estado_igss         = 'activo',
+           fecha_inicio_igss   = COALESCE(fecha_inicio_igss, CURRENT_DATE),
+           updated_at          = NOW()
+         WHERE estado_laboral = 'activo'
+           AND NOT (COALESCE(aplica_igss_general, FALSE) = TRUE AND COALESCE(estado_igss, '') = 'activo')`
+      );
+
+      const puestosRes = await client.query(
+        `UPDATE puestos_operativos SET
+           aplica_igss = TRUE
+         WHERE activo = TRUE
+           AND COALESCE(aplica_igss, FALSE) = FALSE`
+      );
+
+      await client.query("COMMIT");
+
+      logger.info(
+        { empleados: empRes.rowCount, puestos: puestosRes.rowCount, usuario: username },
+        "POST /igss/activar-todos ejecutado"
+      );
+
+      return res.json({
+        ok: true,
+        empleados_actualizados: empRes.rowCount ?? 0,
+        puestos_actualizados: puestosRes.rowCount ?? 0,
+      });
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.error({ err }, "POST /igss/activar-todos error");
+    return res.status(500).json({ error: "Error al activar IGSS masivo" });
   }
 });
 

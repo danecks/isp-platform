@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { AdminLayout } from "../layout/AdminLayout";
 import {
-  Landmark, Building2, MapPin, Phone, Mail, Fax,
+  Landmark, Building2, MapPin, Phone, Mail,
   Loader2, CheckCircle, AlertTriangle, Save, Edit3,
   ExternalLink, Plus, RefreshCw, Shield, X,
   FileText, Download, Eye, Users, DollarSign, Calendar
@@ -525,6 +525,89 @@ function PanelGenerarPlanilla() {
   );
 }
 
+// ─── Acción de un solo uso: activar IGSS a todos ─────────────────────────────
+function PanelActivarTodos() {
+  const [confirmando, setConfirmando] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [resultado, setResultado] = useState<{ empleados_actualizados: number; puestos_actualizados: number } | null>(null);
+
+  const ejecutar = async () => {
+    setLoading(true); setError("");
+    try {
+      const r = await fetch(`${API}/igss/activar-todos`, { method: "POST", headers: h() });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Error");
+      setResultado(data);
+      setConfirmando(false);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-[#0c1829] border border-amber-500/15 rounded-2xl overflow-hidden">
+      <div className="flex items-center gap-2 px-5 py-4 border-b border-white/5">
+        <Shield className="w-4 h-4 text-amber-400" />
+        <p className="text-sm font-bold text-white">Activar IGSS a todos</p>
+        <span className="text-[9px] text-amber-400/70 bg-amber-400/8 border border-amber-400/20 px-2 py-0.5 rounded-full">acción única</span>
+      </div>
+
+      <div className="p-5 space-y-3">
+        <p className="text-[11px] text-white/45 leading-relaxed">
+          Deja a <strong className="text-white/70">todos los colaboradores activos</strong> como afectos a IGSS y activa la
+          cobertura IGSS en todos los puestos, para que el descuento realmente salga en la planilla.
+          Luego puedes quitar manualmente los que no apliquen desde la ficha de cada colaborador.
+        </p>
+
+        {resultado ? (
+          <div className="flex items-start gap-2 bg-emerald-500/8 border border-emerald-500/20 rounded-xl p-3">
+            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-emerald-300">
+              Listo. {resultado.empleados_actualizados} colaboradores marcados como afectos y{" "}
+              {resultado.puestos_actualizados} puestos con cobertura IGSS activada.
+            </p>
+          </div>
+        ) : confirmando ? (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl p-3">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-300">
+                Esto afecta la nómina real (lo que se descuenta a cada persona y el aporte patronal). ¿Confirmas?
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmando(false)} disabled={loading}
+                className="px-3 py-2 rounded-lg border border-white/10 text-xs text-white/50 hover:text-white transition-colors disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={ejecutar} disabled={loading}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all disabled:opacity-50">
+                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
+                Sí, activar a todos
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => { setError(""); setConfirmando(true); }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all">
+            <Shield className="w-3.5 h-3.5" /> Activar IGSS a todos
+          </button>
+        )}
+
+        {error && (
+          <div className="flex items-start gap-2 bg-red-500/8 border border-red-500/20 rounded-xl p-3">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{error}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Página principal IGSS ────────────────────────────────────────────────────
 export default function IGSS() {
   const [, navigate] = useLocation();
@@ -560,6 +643,9 @@ export default function IGSS() {
 
         {/* Generar Planilla TXT */}
         <PanelGenerarPlanilla />
+
+        {/* Acción única: activar IGSS a todos */}
+        <PanelActivarTodos />
 
         {/* Panel patrono */}
         <PanelConfigPatrono />
