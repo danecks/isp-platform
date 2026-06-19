@@ -11,7 +11,9 @@ export type TipoDocumentoDrive = "contrato" | "acta" | "horas_extra";
 
 export interface DriveUploadResponse {
   ok: boolean;
+  duplicado?: boolean;
   carpeta: string;
+  subcarpeta?: string;
   id: string;
   nombre: string;
   enlace: string | null;
@@ -21,10 +23,11 @@ export async function guardarEnDrive(
   tipo: TipoDocumentoDrive,
   nombre: string,
   contenidoBase64: string,
+  fecha?: string,
 ): Promise<DriveUploadResponse> {
   return apiRequest<DriveUploadResponse>("/drive/upload", {
     method: "POST",
-    json: { tipo, nombre, contenidoBase64 },
+    json: { tipo, nombre, contenidoBase64, fecha },
   });
 }
 

@@ -323,7 +323,7 @@ export async function generarActaAdministrativa(
     { label: "Testigo 2", nombre: "" },
   );
 
-  const filename = `acta-administrativa-${String(datos.numero_acta).padStart(4, "0")}-${datos.empleado_nombre.split(" ")[0].toLowerCase()}.pdf`;
+  const filename = `Acta No. ${String(datos.numero_acta).padStart(4, "0")} - ${datos.empleado_nombre}.pdf`;
   return entregar(pdf, filename, salida);
 }
 
@@ -623,7 +623,7 @@ export async function generarConstanciaHorasExtra(
     "La firma del colaborador confirma la recepción de esta constancia y la veracidad de las horas trabajadas.",
   );
 
-  const filename = `constancia-he-ERH-${String(evento.id).padStart(4, "0")}-${evento.employee_nombre.split(" ")[0].toLowerCase()}.pdf`;
+  const filename = `Constancia HE ERH-${String(evento.id).padStart(4, "0")} - ${evento.employee_nombre}.pdf`;
   return entregar(pdf, filename, salida);
 }
 
@@ -1035,8 +1035,7 @@ export async function generarContratoLaboral(
     `Conforme al artículo 28 del Código de Trabajo, este contrato debe ser presentado por EL PATRONO a la Dirección General de Trabajo dentro de los quince (15) días siguientes a su celebración.`,
   );
 
-  const slug = datos.empleado_nombre.split(" ")[0].toLowerCase().replace(/[^a-z]/g, "");
-  const filename = `contrato-${esInicial ? "inicial" : "post-prueba"}-${slug}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `Contrato ${esInicial ? "Inicial" : "Post-Prueba"} - ${datos.empleado_nombre}.pdf`;
   return entregar(pdf, filename, salida);
 }
 

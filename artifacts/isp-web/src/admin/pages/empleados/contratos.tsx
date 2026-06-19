@@ -478,8 +478,10 @@ export function TabContratos({ emp }: { emp: Empleado }) {
 
       const res = await generarContratoLaboral(datos, "drive");
       if (res) {
-        await guardarEnDrive("contrato", res.filename, res.base64);
-        toast({ title: "Guardado en Google Drive", description: `Carpeta «Contratos» — ${res.filename}` });
+        const r = await guardarEnDrive("contrato", res.filename, res.base64);
+        toast(r.duplicado
+          ? { title: "Ya estaba en Google Drive", description: `Este contrato ya existe en «Contratos/${r.subcarpeta}». No se subió de nuevo.` }
+          : { title: "Guardado en Google Drive", description: `Carpeta «Contratos/${r.subcarpeta}» — ${res.filename}` });
       }
     } catch (err) {
       toast({ title: "No se pudo guardar en Drive", description: (err as Error)?.message || "Revisa la conexión con Google Drive.", variant: "destructive" });

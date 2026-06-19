@@ -184,9 +184,11 @@ export default function RRHHEventos() {
       if (evento.tipo_evento === "horas_extra") {
         const res = await generarConstanciaHorasExtra(evento, "drive");
         if (res) {
-          await guardarEnDrive("horas_extra", res.filename, res.base64);
-          await registrarDescarga(evento, "constancia_he");
-          toast({ title: "Guardado en Google Drive", description: `Carpeta «Horas Extras» — ERH-${String(evento.id).padStart(4, "0")}` });
+          const r = await guardarEnDrive("horas_extra", res.filename, res.base64, evento.fecha);
+          if (!r.duplicado) await registrarDescarga(evento, "constancia_he");
+          toast(r.duplicado
+            ? { title: "Ya estaba en Google Drive", description: `Esta constancia ya existe en «Horas Extras/${r.subcarpeta}». No se subió de nuevo.` }
+            : { title: "Guardado en Google Drive", description: `Carpeta «Horas Extras/${r.subcarpeta}» — ERH-${String(evento.id).padStart(4, "0")}` });
         }
       } else {
         await generarBoletaDescuento(evento);
@@ -209,9 +211,11 @@ export default function RRHHEventos() {
       if (hechosExtra) datos.hechos = hechosExtra;
       const res = await generarActaAdministrativa(datos, "drive");
       if (res) {
-        await guardarEnDrive("acta", res.filename, res.base64);
-        await registrarDescarga(evento, "acta");
-        toast({ title: "Guardado en Google Drive", description: `Carpeta «Actas» — Acta No. ${datos.numero_acta}` });
+        const r = await guardarEnDrive("acta", res.filename, res.base64, evento.fecha);
+        if (!r.duplicado) await registrarDescarga(evento, "acta");
+        toast(r.duplicado
+          ? { title: "Ya estaba en Google Drive", description: `Esta acta ya existe en «Actas/${r.subcarpeta}». No se subió de nuevo.` }
+          : { title: "Guardado en Google Drive", description: `Carpeta «Actas/${r.subcarpeta}» — Acta No. ${datos.numero_acta}` });
       }
       setModalCausales(null);
     } catch {
