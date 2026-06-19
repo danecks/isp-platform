@@ -121,7 +121,7 @@ export function PanelPool() {
             </div>
           ) : (
             <div className="divide-y divide-white/5 max-h-[260px] overflow-y-auto">
-              {(["P1", "P2", "P3", "P4", "P5"] as GrupoRanking[]).map((grupo) => {
+              {(["P1", "P2", "P3", "P4", "P5", "P6"] as GrupoRanking[]).map((grupo) => {
                 const grupo_agentes = candidatosRankeados.filter(a => a.grupo === grupo);
                 if (grupo_agentes.length === 0) return null;
                 const cfg = RANKING_GRUPO_CONFIG[grupo];

@@ -107,7 +107,7 @@ export function SelectorAgenteAgrupado({
   }
 
   function handleClickRanked(ar: AgenteRankeado) {
-    const requiereConf = ar.grupo === "P2" || ar.grupo === "P4" || ar.grupo === "P5";
+    const requiereConf = ar.grupo === "P2" || ar.grupo === "P4" || ar.grupo === "P5" || ar.grupo === "P6";
     if (requiereConf) { setPendienteRanked(ar); return; }
     onSelect({
       id: ar.id,
@@ -122,7 +122,9 @@ export function SelectorAgenteAgrupado({
     onSelect({
       id: pendienteRanked.id,
       nombre: pendienteRanked.nombre_completo,
-      grupo: pendienteRanked.grupo === "P5" ? "disponible" : "descansando",
+      grupo: pendienteRanked.grupo === "P5" ? "disponible"
+        : pendienteRanked.grupo === "P6" ? "en_puesto"
+        : "descansando",
       detalle: pendienteRanked.puesto ?? null,
       tipo_personal: (pendienteRanked as any).tipo_personal,
     } as AgenteAgrupado);
@@ -130,7 +132,7 @@ export function SelectorAgenteAgrupado({
   }
 
   if (modoRanking) {
-    const gruposRanking = (["P1", "P2", "P3", "P4", "P5"] as GrupoRanking[])
+    const gruposRanking = (["P1", "P2", "P3", "P4", "P5", "P6"] as GrupoRanking[])
       .map((g) => ({ g, lista: filtradosRanked.filter((a) => a.grupo === g) }))
       .filter((x) => x.lista.length > 0);
 
@@ -154,6 +156,10 @@ export function SelectorAgenteAgrupado({
                   <span className="font-semibold">{pendienteRanked.nombre_completo}</span> es{" "}
                   {(pendienteRanked as any).tipo_personal === "supervisor" ? "Supervisor" : "Jefe de Servicio"}.
                   {" "}Esta es una <span className="font-semibold text-orange-300">cobertura de contingencia operativa</span>. Solo cubrirá temporalmente, sin cambiar titularidad.
+                </p>
+              ) : pendienteRanked.grupo === "P6" ? (
+                <p className="text-[10px] text-amber-300/80 leading-snug">
+                  <span className="font-semibold">{pendienteRanked.nombre_completo}</span> ya está en turno hoy. Asignarlo a este tramo implica una <span className="font-semibold text-amber-300">doble cobertura</span>.
                 </p>
               ) : (
                 <p className="text-[10px] text-amber-300/80 leading-snug">

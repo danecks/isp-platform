@@ -142,7 +142,9 @@ export interface Agente {
 
   // ── Tipos para ranking de candidatos ─────────────────────────────────────────
   // P5: supervisores y jefes de servicio (contingencia operativa — menor prioridad)
-export type GrupoRanking = "P1" | "P2" | "P3" | "P4" | "P5";
+  // P6: agentes que ya están trabajando/cubriendo hoy (en turno) — última opción,
+  //     antes quedaban completamente fuera del selector de tramos.
+export type GrupoRanking = "P1" | "P2" | "P3" | "P4" | "P5" | "P6";
 
 export interface AgenteRankeado extends Agente {
   grupo: GrupoRanking;
@@ -157,6 +159,7 @@ export const RANKING_GRUPO_CONFIG: Record<GrupoRanking, { label: string; sub: st
   P3: { label: "Disponible · Otras zonas",        sub: "Sin zona coincidente",  headerColor: "text-white/50",       borderColor: "border-white/8" },
   P4: { label: "Descanso de ciclo · Otras zonas", sub: "Disponible con HE",     headerColor: "text-white/30",       borderColor: "border-white/5" },
   P5: { label: "Contingencia operativa",          sub: "Supervisor / Jefe",     headerColor: "text-orange-300/80",  borderColor: "border-orange-500/15" },
+  P6: { label: "En turno hoy",                    sub: "Ya cubriendo · doble cobertura", headerColor: "text-teal-300/80", borderColor: "border-teal-500/15" },
 };
 export const RANKING_MOTIVO_CONFIG: Record<string, { label: string; cls: string }> = {
   disponible:      { label: "Disponible",     cls: "text-emerald-300 bg-emerald-500/15" },
@@ -166,6 +169,7 @@ export const RANKING_MOTIVO_CONFIG: Record<string, { label: string; cls: string 
   conoce_cliente:  { label: "Conoce cliente", cls: "text-amber-300 bg-amber-500/15" },
   conoce_puesto:   { label: "Conoce puesto",  cls: "text-purple-300 bg-purple-500/15" },
   contingencia:    { label: "Contingencia",   cls: "text-orange-300 bg-orange-500/15" },
+  en_turno:        { label: "En turno",       cls: "text-teal-300 bg-teal-500/15" },
 };
 
 export interface SupervisorPool {
