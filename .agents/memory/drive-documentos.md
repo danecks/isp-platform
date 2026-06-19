@@ -11,7 +11,9 @@ Los botones de descarga de **contratos**, **actas administrativas** y **constanc
 - Frontend sube con `guardarEnDrive(tipo, nombre, base64)` → `POST /api/drive/upload` body `{tipo, nombre, contenidoBase64}`.
 - Backend `googleDrive.ts` usa `@replit/connectors-sdk` (connector `google-drive`, scope `drive.file`): `c.proxy(connector, path, {method,headers,body})` para list/create carpeta y upload multipart/related; `c.listConnections({connector_names})` para estado. NO cachear el cliente entre requests (se crea barato); SÍ cachear folderName→id en memoria.
 
-**Qué NO se tocó (a propósito, siguen descargando):** boleta de descuento (rama no-HE), acta de anulación, KioscoSolicitudes, PlantillasContrato (preview), kpi.tsx. Usan el default `"descargar"`.
+**Qué NO se tocó (a propósito, siguen descargando):** boleta de descuento (rama no-HE), acta de anulación, PlantillasContrato (preview), kpi.tsx. Usan el default `"descargar"`.
+
+**Contrato desde Solicitudes (KioscoSolicitudes.tsx) SÍ sube a Drive:** los dos botones (Contrato Inicial y Post-Prueba) llaman `generarContratoLaboral(datos, "drive")` + `guardarEnDrive("contrato", ...)`. Este archivo NO usa toast (useToast); su patrón de feedback es `alert()`, así que el resultado/duplicado/error se muestra con alert.
 
 **Batch de actas (BatchActasPanel.tsx) SÍ sube a Drive** (decisión del director): itera los eventos filtrados, llama `generarActaAdministrativa(datos, "drive")` + `guardarEnDrive("acta", filename, base64, ev.fecha)` con la MISMA lógica que las individuales (nombre completo, subcarpeta por mes, dedupe). El toast resume subidas/repetidas/errores. Se renombraron labels: "Batch de Actas a Google Drive" y "Subir N acta(s) a Drive".
 

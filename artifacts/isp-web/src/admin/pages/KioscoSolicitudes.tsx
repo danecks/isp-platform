@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { generarContratoLaboral, cargarPatronoDesdeConfig, type DatosContratoLaboral } from "@/lib/pdfRrhh";
+import { guardarEnDrive } from "@/lib/guardarEnDrive";
 import { getSessionToken } from "@/lib/httpClient";
 
 const API = "/api";
@@ -1286,7 +1287,17 @@ export default function KioscoSolicitudes() {
                                 tipo_contrato: "inicial",
                                 patrono,
                               };
-                              generarContratoLaboral(datos);
+                              try {
+                                const res = await generarContratoLaboral(datos, "drive");
+                                if (res) {
+                                  const r = await guardarEnDrive("contrato", res.filename, res.base64);
+                                  alert(r.duplicado
+                                    ? `Este contrato ya estaba en Google Drive (Contratos/${r.subcarpeta}). No se subió de nuevo.`
+                                    : `Contrato subido a Google Drive: Contratos/${r.subcarpeta} — ${res.filename}`);
+                                }
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : "No se pudo subir el contrato a Google Drive");
+                              }
                             }}
                             className="flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors"
                           >
@@ -1314,7 +1325,17 @@ export default function KioscoSolicitudes() {
                                 tipo_contrato: "post_prueba",
                                 patrono,
                               };
-                              generarContratoLaboral(datos);
+                              try {
+                                const res = await generarContratoLaboral(datos, "drive");
+                                if (res) {
+                                  const r = await guardarEnDrive("contrato", res.filename, res.base64);
+                                  alert(r.duplicado
+                                    ? `Este contrato ya estaba en Google Drive (Contratos/${r.subcarpeta}). No se subió de nuevo.`
+                                    : `Contrato subido a Google Drive: Contratos/${r.subcarpeta} — ${res.filename}`);
+                                }
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : "No se pudo subir el contrato a Google Drive");
+                              }
                             }}
                             className="flex items-center justify-center gap-2 px-3 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-colors"
                           >
