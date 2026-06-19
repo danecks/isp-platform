@@ -1039,3 +1039,151 @@ export async function generarContratoLaboral(
   return entregar(pdf, filename, salida);
 }
 
+// ─── Solicitud de Empleo ────────────────────────────────────────────────────
+// Genera el PDF de la solicitud a partir de los datos capturados en el Kiosco
+// (o por teléfono). No hay documento físico previo: este PDF ES la solicitud.
+export interface DatosSolicitudEmpleo {
+  id: number;
+  nombre_completo: string;
+  dpi: string | null;
+  fecha_nacimiento: string | null;
+  genero: string | null;
+  estado_civil: string | null;
+  telefono: string | null;
+  correo: string | null;
+  direccion: string | null;
+  municipio: string | null;
+  departamento: string | null;
+  puesto_solicitado: string | null;
+  disponibilidad_horario: string | null;
+  pretension_salarial: string | null;
+  grado_estudios: string | null;
+  experiencia_seguridad: boolean;
+  anios_experiencia: number;
+  empresa_anterior: string | null;
+  licencia_armas: boolean;
+  tiene_vehiculo: boolean;
+  disponible_exterior: boolean;
+  nombre_contacto_emergencia: string | null;
+  telefono_emergencia: string | null;
+  parentesco_emergencia: string | null;
+  nombre_padre: string | null;
+  nombre_madre: string | null;
+  num_dependientes: number;
+  familiar_en_empresa: boolean;
+  nombre_familiar_empresa: string | null;
+  banco: string | null;
+  tipo_cuenta: string | null;
+  num_cuenta: string | null;
+  estatura: string | null;
+  peso: string | null;
+  enfermedad_cronica: string | null;
+  proceso_judicial: string | null;
+  detenido: string | null;
+  canal: string | null;
+  created_at: string;
+}
+
+export async function generarSolicitudEmpleo(
+  datos: DatosSolicitudEmpleo,
+  salida: SalidaPdf = "descargar",
+): Promise<ResultadoPdf | void> {
+  const pdf = new IspPdf({
+    titulo: "SOLICITUD DE EMPLEO",
+    subtitulo: `SOL-${String(datos.id).padStart(5, "0")}`,
+    preparedBy: "Departamento de Recursos Humanos",
+    compact: true,
+  });
+  await pdf.build();
+
+  const txt = (v: string | null | undefined): string => {
+    const s = (v ?? "").toString().trim();
+    return s || "—";
+  };
+  const si = (v: boolean): string => (v ? "Sí" : "No");
+  const fecha = (v: string | null): string => (v ? fmtFechaCorta(v) : "—");
+
+  // Cada sección es una tabla de dos columnas (Campo / Dato). Se omiten las
+  // filas sin valor para no llenar el documento de guiones.
+  const seccion = (titulo: string, filas: [string, string][]): void => {
+    const datosFilas = filas.filter(([, val]) => val && val !== "—");
+    if (datosFilas.length === 0) return;
+    pdf.addSeccionTitulo(titulo);
+    pdf.addTabla(["Campo", "Dato"], datosFilas, undefined, {
+      columnStyles: { 0: { cellWidth: 55, fontStyle: "bold" } },
+    });
+  };
+
+  seccion("Datos personales", [
+    ["Nombre completo", txt(datos.nombre_completo)],
+    ["DPI", txt(datos.dpi)],
+    ["Fecha de nacimiento", fecha(datos.fecha_nacimiento)],
+    ["Género", txt(datos.genero)],
+    ["Estado civil", txt(datos.estado_civil)],
+    ["Teléfono", txt(datos.telefono)],
+    ["Correo", txt(datos.correo)],
+    ["Estatura", txt(datos.estatura)],
+    ["Peso", txt(datos.peso)],
+  ]);
+
+  seccion("Domicilio", [
+    ["Dirección", txt(datos.direccion)],
+    ["Municipio", txt(datos.municipio)],
+    ["Departamento", txt(datos.departamento)],
+  ]);
+
+  seccion("Puesto solicitado", [
+    ["Puesto", txt(datos.puesto_solicitado)],
+    ["Disponibilidad de horario", txt(datos.disponibilidad_horario)],
+    ["Pretensión salarial", txt(datos.pretension_salarial)],
+    ["Grado de estudios", txt(datos.grado_estudios)],
+  ]);
+
+  seccion("Experiencia en seguridad", [
+    ["Tiene experiencia", si(datos.experiencia_seguridad)],
+    ["Años de experiencia", datos.anios_experiencia ? String(datos.anios_experiencia) : "—"],
+    ["Empresa anterior", txt(datos.empresa_anterior)],
+    ["Licencia de armas", si(datos.licencia_armas)],
+    ["Vehículo propio", si(datos.tiene_vehiculo)],
+    ["Disponible para exterior", si(datos.disponible_exterior)],
+  ]);
+
+  seccion("Contacto de emergencia", [
+    ["Nombre", txt(datos.nombre_contacto_emergencia)],
+    ["Teléfono", txt(datos.telefono_emergencia)],
+    ["Parentesco", txt(datos.parentesco_emergencia)],
+  ]);
+
+  seccion("Familia", [
+    ["Nombre del padre", txt(datos.nombre_padre)],
+    ["Nombre de la madre", txt(datos.nombre_madre)],
+    ["Dependientes", String(datos.num_dependientes ?? 0)],
+    [
+      "Familiar en la empresa",
+      datos.familiar_en_empresa ? `Sí — ${txt(datos.nombre_familiar_empresa)}` : "No",
+    ],
+  ]);
+
+  seccion("Datos bancarios", [
+    ["Banco", txt(datos.banco)],
+    ["Tipo de cuenta", txt(datos.tipo_cuenta)],
+    ["No. de cuenta", txt(datos.num_cuenta)],
+  ]);
+
+  seccion("Antecedentes", [
+    ["Proceso judicial", txt(datos.proceso_judicial)],
+    ["Ha sido detenido", txt(datos.detenido)],
+  ]);
+
+  pdf.addEspacio(10);
+  pdf.addFirmaSimple("Firma del solicitante", datos.nombre_completo.toUpperCase());
+  pdf.addEspacio(4);
+  pdf.addTextoResumen(
+    `Solicitud recibida por canal ${txt(datos.canal)} el ${fmtFechaCorta(datos.created_at)}. ` +
+      "Declaro que la información proporcionada es verídica.",
+  );
+
+  const filename = `Solicitud de Empleo - ${datos.nombre_completo}.pdf`;
+  return entregar(pdf, filename, salida);
+}
+

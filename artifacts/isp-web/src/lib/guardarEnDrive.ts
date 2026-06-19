@@ -7,27 +7,32 @@
  */
 import { apiRequest } from "./httpClient";
 
-export type TipoDocumentoDrive = "contrato" | "acta" | "horas_extra";
+export type TipoDocumentoDrive = "contrato" | "acta" | "horas_extra" | "solicitud";
 
 export interface DriveUploadResponse {
   ok: boolean;
   duplicado?: boolean;
   carpeta: string;
   subcarpeta?: string;
+  empleado?: string | null;
   id: string;
   nombre: string;
   enlace: string | null;
 }
 
+// `empleado` (nombre completo) activa el segundo destino: además de la carpeta
+// por tipo, el documento se copia a `Empleados/<empleado>/` con todos los demás
+// documentos de esa persona.
 export async function guardarEnDrive(
   tipo: TipoDocumentoDrive,
   nombre: string,
   contenidoBase64: string,
   fecha?: string,
+  empleado?: string,
 ): Promise<DriveUploadResponse> {
   return apiRequest<DriveUploadResponse>("/drive/upload", {
     method: "POST",
-    json: { tipo, nombre, contenidoBase64, fecha },
+    json: { tipo, nombre, contenidoBase64, fecha, empleado },
   });
 }
 

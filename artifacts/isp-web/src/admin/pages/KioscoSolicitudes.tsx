@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
-import { generarContratoLaboral, cargarPatronoDesdeConfig, type DatosContratoLaboral } from "@/lib/pdfRrhh";
+import { generarContratoLaboral, generarSolicitudEmpleo, cargarPatronoDesdeConfig, type DatosContratoLaboral } from "@/lib/pdfRrhh";
 import { guardarEnDrive } from "@/lib/guardarEnDrive";
 import { getSessionToken } from "@/lib/httpClient";
 
@@ -1290,7 +1290,7 @@ export default function KioscoSolicitudes() {
                               try {
                                 const res = await generarContratoLaboral(datos, "drive");
                                 if (res) {
-                                  const r = await guardarEnDrive("contrato", res.filename, res.base64);
+                                  const r = await guardarEnDrive("contrato", res.filename, res.base64, undefined, datos.empleado_nombre);
                                   alert(r.duplicado
                                     ? `Este contrato ya estaba en Google Drive (Contratos/${r.subcarpeta}). No se subió de nuevo.`
                                     : `Contrato subido a Google Drive: Contratos/${r.subcarpeta} — ${res.filename}`);
@@ -1328,7 +1328,7 @@ export default function KioscoSolicitudes() {
                               try {
                                 const res = await generarContratoLaboral(datos, "drive");
                                 if (res) {
-                                  const r = await guardarEnDrive("contrato", res.filename, res.base64);
+                                  const r = await guardarEnDrive("contrato", res.filename, res.base64, undefined, datos.empleado_nombre);
                                   alert(r.duplicado
                                     ? `Este contrato ya estaba en Google Drive (Contratos/${r.subcarpeta}). No se subió de nuevo.`
                                     : `Contrato subido a Google Drive: Contratos/${r.subcarpeta} — ${res.filename}`);
@@ -1340,6 +1340,67 @@ export default function KioscoSolicitudes() {
                             className="flex items-center justify-center gap-2 px-3 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-colors"
                           >
                             <Printer size={14} /> Contrato Post-Prueba<br/>(Indefinido)
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await generarSolicitudEmpleo(
+                                  {
+                                    id: detalle.id,
+                                    nombre_completo: detalle.nombre_completo,
+                                    dpi: detalle.dpi,
+                                    fecha_nacimiento: detalle.fecha_nacimiento,
+                                    genero: detalle.genero,
+                                    estado_civil: detalle.estado_civil,
+                                    telefono: detalle.telefono,
+                                    correo: detalle.correo,
+                                    direccion: detalle.direccion,
+                                    municipio: detalle.municipio,
+                                    departamento: detalle.departamento,
+                                    puesto_solicitado: detalle.puesto_solicitado,
+                                    disponibilidad_horario: detalle.disponibilidad_horario,
+                                    pretension_salarial: detalle.pretension_salarial,
+                                    grado_estudios: detalle.grado_estudios,
+                                    experiencia_seguridad: detalle.experiencia_seguridad,
+                                    anios_experiencia: detalle.anios_experiencia,
+                                    empresa_anterior: detalle.empresa_anterior,
+                                    licencia_armas: detalle.licencia_armas,
+                                    tiene_vehiculo: detalle.tiene_vehiculo,
+                                    disponible_exterior: detalle.disponible_exterior,
+                                    nombre_contacto_emergencia: detalle.nombre_contacto_emergencia,
+                                    telefono_emergencia: detalle.telefono_emergencia,
+                                    parentesco_emergencia: detalle.parentesco_emergencia,
+                                    nombre_padre: detalle.nombre_padre,
+                                    nombre_madre: detalle.nombre_madre,
+                                    num_dependientes: detalle.num_dependientes,
+                                    familiar_en_empresa: detalle.familiar_en_empresa,
+                                    nombre_familiar_empresa: detalle.nombre_familiar_empresa,
+                                    banco: detalle.banco,
+                                    tipo_cuenta: detalle.tipo_cuenta,
+                                    num_cuenta: detalle.num_cuenta,
+                                    estatura: detalle.estatura,
+                                    peso: detalle.peso,
+                                    enfermedad_cronica: detalle.enfermedad_cronica,
+                                    proceso_judicial: detalle.proceso_judicial,
+                                    detenido: detalle.detenido,
+                                    canal: detalle.canal,
+                                    created_at: detalle.created_at,
+                                  },
+                                  "drive",
+                                );
+                                if (res) {
+                                  const r = await guardarEnDrive("solicitud", res.filename, res.base64, detalle.created_at, detalle.nombre_completo);
+                                  alert(r.duplicado
+                                    ? `Esta solicitud ya estaba en Google Drive (Solicitudes/${r.subcarpeta}). No se subió de nuevo.`
+                                    : `Solicitud subida a Google Drive: Solicitudes/${r.subcarpeta} y Empleados/${detalle.nombre_completo}`);
+                                }
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : "No se pudo subir la solicitud a Google Drive");
+                              }
+                            }}
+                            className="flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                          >
+                            <Printer size={14} /> Solicitud de Empleo
                           </button>
                         </div>
                         <p className="text-yellow-500/80 text-[10px] mt-2 italic">

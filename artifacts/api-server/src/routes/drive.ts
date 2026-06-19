@@ -9,7 +9,24 @@ const CARPETAS: Record<string, string> = {
   contrato: "Contratos",
   acta: "Actas",
   horas_extra: "Horas Extras",
+  solicitud: "Solicitudes",
 };
+
+// Carpeta raíz donde vive una subcarpeta por cada empleado (segundo destino).
+const CARPETA_EMPLEADOS = "Empleados";
+
+// Limpia el nombre del empleado para usarlo como nombre de carpeta en Drive.
+// Drive no usa rutas reales, pero evitamos barras y espacios sobrantes que
+// confunden la lectura humana de la estructura.
+function nombreCarpetaEmpleado(nombre: string): string {
+  return nombre
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[\\/]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -45,7 +62,7 @@ driveRouter.get("/drive/estado", async (_req, res) => {
 // POST /api/drive/upload — sube un PDF (base64) a la carpeta de su tipo.
 // Body: { tipo: "contrato"|"acta"|"horas_extra", nombre: string, contenidoBase64: string }
 driveRouter.post("/drive/upload", async (req, res) => {
-  const { tipo, nombre, contenidoBase64, fecha } = req.body ?? {};
+  const { tipo, nombre, contenidoBase64, fecha, empleado } = req.body ?? {};
 
   const carpeta = CARPETAS[String(tipo)];
   if (!carpeta) {
@@ -60,25 +77,47 @@ driveRouter.post("/drive/upload", async (req, res) => {
 
   const fileName = nombre.toLowerCase().endsWith(".pdf") ? nombre : `${nombre}.pdf`;
   const subcarpeta = mesCarpeta(typeof fecha === "string" ? fecha : undefined);
+  const empleadoNombre =
+    typeof empleado === "string" && empleado.trim()
+      ? nombreCarpetaEmpleado(empleado)
+      : null;
   try {
+    // Destino 1: carpeta por tipo, subcarpeta por mes (como siempre).
     const result = await uploadPdfToDrive({
       folderName: carpeta,
       subFolder: subcarpeta,
       fileName,
       base64: contenidoBase64,
     });
-    res.json({
+
+    // Destino 2: carpeta del empleado (todos sus documentos juntos), sin mes.
+    let resultEmpleado: Awaited<ReturnType<typeof uploadPdfToDrive>> | null = null;
+    if (empleadoNombre) {
+      resultEmpleado = await uploadPdfToDrive({
+        folderName: CARPETA_EMPLEADOS,
+        subFolder: empleadoNombre,
+        fileName,
+        base64: contenidoBase64,
+      });
+    }
+
+    // "duplicado" = ya existía en TODOS los destinos aplicables (nada nuevo se subió).
+    const duplicado =
+      result.duplicate && (resultEmpleado == null || resultEmpleado.duplicate);
+
+    return res.json({
       ok: true,
-      duplicado: result.duplicate,
+      duplicado,
       carpeta,
       subcarpeta,
+      empleado: empleadoNombre,
       id: result.id,
       nombre: result.name,
       enlace: result.webViewLink ?? null,
     });
   } catch (err) {
     logger.error({ err }, "POST /drive/upload error");
-    res.status(502).json({
+    return res.status(502).json({
       error: "No se pudo guardar en Google Drive. Verifica que la conexión siga activa.",
     });
   }

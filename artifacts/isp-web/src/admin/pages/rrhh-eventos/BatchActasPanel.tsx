@@ -34,7 +34,7 @@ export function BatchActasPanel({ eventos }: { eventos: EventoRrhh[] }) {
         const datos = await construirDatosActa(ev);
         const res = await generarActaAdministrativa(datos, "drive");
         if (res) {
-          const r = await guardarEnDrive("acta", res.filename, res.base64, ev.fecha);
+          const r = await guardarEnDrive("acta", res.filename, res.base64, ev.fecha, ev.employee_nombre);
           if (r.duplicado) repetidas++;
           else subidas++;
         }
