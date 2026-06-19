@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   AlertTriangle, Ban, BookOpen, Briefcase, Building2, Calendar, ChevronDown,
-  ClipboardList, Download, FileText, Loader2, Shield, User, XCircle,
+  ClipboardList, Download, FileText, Loader2, Shield, UploadCloud, User, XCircle,
 } from "lucide-react";
 import type { EventoRrhh } from "@/lib/pdfRrhh";
 import { MOTIVO_ANULACION_LABELS } from "@/lib/pdfRrhh";
@@ -276,8 +276,10 @@ export function EventoCard({
                 onClick={() => onDescargarBoleta(evento)}
                 className={`flex-1 flex items-center justify-center gap-1 ${compact ? "py-1.5 rounded-lg text-[11px]" : "py-2 rounded-xl text-xs"} bg-[#0c1929] hover:bg-[#0f1e34] border border-white/8 hover:border-primary/30 text-white/60 hover:text-white transition-all`}
               >
-                <Download className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
-                {evento.tipo_evento === "horas_extra" ? "Constancia HE" : "Boleta"}
+                {evento.tipo_evento === "horas_extra"
+                  ? <UploadCloud className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+                  : <Download className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />}
+                {evento.tipo_evento === "horas_extra" ? "HE a Drive" : "Boleta"}
               </button>
               {evento.tipo_evento !== "horas_extra" && (
                 <button

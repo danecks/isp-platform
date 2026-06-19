@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, Download, FileText, Loader2, X } from "lucide-react";
+import { CheckCircle2, FileText, Loader2, UploadCloud, X } from "lucide-react";
 import type { EventoRrhh } from "@/lib/pdfRrhh";
 import { fmtFecha } from "./helpers";
 import { TIPO_CONFIG } from "./constants";
@@ -105,8 +105,8 @@ export function ModalCausalesActa({
           <button onClick={onClose} className="flex-1 text-xs text-white/40 hover:text-white/60 py-2 rounded-lg border border-white/10 hover:bg-white/5 transition-colors">Cancelar</button>
           <button onClick={handleConfirm} disabled={loading || causales.length === 0}
             className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 rounded-lg py-2 disabled:opacity-40 transition-colors">
-            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-            {loading ? "Generando…" : `Generar Acta (${causales.length} causal${causales.length !== 1 ? "es" : ""})`}
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+            {loading ? "Guardando…" : `Guardar en Drive (${causales.length} causal${causales.length !== 1 ? "es" : ""})`}
           </button>
         </div>
       </div>

@@ -43,3 +43,4 @@
 - [Filtro /puestos-gps y selects Windows](puestos-gps-filtro.md) — /puestos-gps filtra estado='cubierto' por defecto; usar ?todos=1 (po.activo=TRUE) para asignar a puesto descubierto; option blanco en Windows se arregla con [&_option]:bg-slate-800.
 - [Acta administrativa en una hoja](acta-administrativa-una-hoja.md) — la genera generarActaAdministrativa (pdfRrhh.ts) con IspPdf, NO actaPdf.ts (señuelo); una hoja vía compact + fonts 8/7.5 + addFirmaDoble checkPageBreak 14.
 - [Custodia titular cubriendo en otro lado](custodia-titular-cubriendo-otro-lado.md) — en el pizarrón admin, titular que hoy cubre en otra custodia/puesto deja su slot de origen descubierto derivado (sin falta ni descuento); portal cliente ya lo refleja.
+- [Documentos a Google Drive](drive-documentos.md) — contratos/actas/HE suben a Drive (carpetas por tipo) en vez de descargar; patrón salida dual "descargar"|"drive" en pdfRrhh; /drive sin módulo a propósito (lo usan empleados + eventos_rrhh).

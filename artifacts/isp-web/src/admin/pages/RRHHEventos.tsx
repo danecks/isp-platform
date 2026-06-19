@@ -21,6 +21,7 @@ import {
   generarBoletaDescuento, generarActaAdministrativa,
   generarConstanciaHorasExtra, generarDocumentoAnulacion,
 } from "@/lib/pdfRrhh";
+import { guardarEnDrive } from "@/lib/guardarEnDrive";
 
 import { API, apiRequest, apiPatch, apiPost, construirDatosActa } from "./rrhh-eventos/helpers";
 import { ApiError } from "@/lib/httpClient";
@@ -181,9 +182,12 @@ export default function RRHHEventos() {
   async function handleDescargarBoleta(evento: EventoRrhh) {
     try {
       if (evento.tipo_evento === "horas_extra") {
-        await generarConstanciaHorasExtra(evento);
-        await registrarDescarga(evento, "constancia_he");
-        toast({ title: "Constancia de HE generada", description: `ERH-${String(evento.id).padStart(4, "0")}` });
+        const res = await generarConstanciaHorasExtra(evento, "drive");
+        if (res) {
+          await guardarEnDrive("horas_extra", res.filename, res.base64);
+          await registrarDescarga(evento, "constancia_he");
+          toast({ title: "Guardado en Google Drive", description: `Carpeta «Horas Extras» — ERH-${String(evento.id).padStart(4, "0")}` });
+        }
       } else {
         await generarBoletaDescuento(evento);
         await registrarDescarga(evento, "boleta");
@@ -203,9 +207,12 @@ export default function RRHHEventos() {
       const datos = await construirDatosActa(evento);
       datos.causales_seleccionadas = causalesIds;
       if (hechosExtra) datos.hechos = hechosExtra;
-      await generarActaAdministrativa(datos);
-      await registrarDescarga(evento, "acta");
-      toast({ title: "Acta administrativa generada", description: `Acta No. ${datos.numero_acta}` });
+      const res = await generarActaAdministrativa(datos, "drive");
+      if (res) {
+        await guardarEnDrive("acta", res.filename, res.base64);
+        await registrarDescarga(evento, "acta");
+        toast({ title: "Guardado en Google Drive", description: `Carpeta «Actas» — Acta No. ${datos.numero_acta}` });
+      }
       setModalCausales(null);
     } catch {
       toast({ title: "Error al generar PDF", variant: "destructive" });

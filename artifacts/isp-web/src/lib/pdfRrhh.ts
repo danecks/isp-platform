@@ -173,7 +173,22 @@ export const MOTIVO_ANULACION_LABELS: Record<string, string> = {
 };
 
 // ─── Acta Administrativa (Formato Oficio – Ministerio de Trabajo) ────────────
-export async function generarActaAdministrativa(datos: DatosActa): Promise<void> {
+// Modo de entrega de un PDF generado: descargarlo en el navegador, o
+// devolver su contenido base64 para subirlo (p. ej. a Google Drive).
+export type SalidaPdf = "descargar" | "drive";
+export interface ResultadoPdf { filename: string; base64: string }
+
+function entregar(pdf: IspPdf, filename: string, salida: SalidaPdf): ResultadoPdf | void {
+  if (salida === "drive") {
+    return { filename, base64: pdf.toBase64() };
+  }
+  pdf.save(filename);
+}
+
+export async function generarActaAdministrativa(
+  datos: DatosActa,
+  salida: SalidaPdf = "descargar",
+): Promise<ResultadoPdf | void> {
   const pdf = new IspPdf({
     titulo: "ACTA ADMINISTRATIVA",
     subtitulo: `Acta No. ${String(datos.numero_acta).padStart(4, "0")}`,
@@ -309,7 +324,7 @@ export async function generarActaAdministrativa(datos: DatosActa): Promise<void>
   );
 
   const filename = `acta-administrativa-${String(datos.numero_acta).padStart(4, "0")}-${datos.empleado_nombre.split(" ")[0].toLowerCase()}.pdf`;
-  pdf.save(filename);
+  return entregar(pdf, filename, salida);
 }
 
 // ─── Aviso al Inspector de Trabajo ───────────────────────────────────────────
@@ -530,7 +545,10 @@ export async function generarBoletaDescuento(evento: EventoRrhh): Promise<void> 
 }
 
 // ─── Constancia de Horas Extra ────────────────────────────────────────────────
-export async function generarConstanciaHorasExtra(evento: EventoRrhh): Promise<void> {
+export async function generarConstanciaHorasExtra(
+  evento: EventoRrhh,
+  salida: SalidaPdf = "descargar",
+): Promise<ResultadoPdf | void> {
   const pdf = new IspPdf({
     titulo: "CONSTANCIA DE HORAS EXTRA",
     subtitulo: `Evento #${evento.id} — Cobertura Operativa`,
@@ -606,7 +624,7 @@ export async function generarConstanciaHorasExtra(evento: EventoRrhh): Promise<v
   );
 
   const filename = `constancia-he-ERH-${String(evento.id).padStart(4, "0")}-${evento.employee_nombre.split(" ")[0].toLowerCase()}.pdf`;
-  pdf.save(filename);
+  return entregar(pdf, filename, salida);
 }
 
 // ─── Documento de Anulación (con marca ANULADO) ───────────────────────────────
@@ -897,7 +915,10 @@ const tipoPersonalLabel = (tipo?: string): string => {
   return tipo ? (map[tipo] ?? tipo) : "Agente de Seguridad Privada";
 };
 
-export async function generarContratoLaboral(datos: DatosContratoLaboral): Promise<void> {
+export async function generarContratoLaboral(
+  datos: DatosContratoLaboral,
+  salida: SalidaPdf = "descargar",
+): Promise<ResultadoPdf | void> {
   const patrono = { ...PATRONO_DATOS, ...(datos.patrono ?? {}) };
   const esInicial = datos.tipo_contrato === "inicial";
   // Edad del representante legal: si hay fecha de nacimiento configurada
@@ -1016,6 +1037,6 @@ export async function generarContratoLaboral(datos: DatosContratoLaboral): Promi
 
   const slug = datos.empleado_nombre.split(" ")[0].toLowerCase().replace(/[^a-z]/g, "");
   const filename = `contrato-${esInicial ? "inicial" : "post-prueba"}-${slug}-${new Date().toISOString().slice(0, 10)}.pdf`;
-  pdf.save(filename);
+  return entregar(pdf, filename, salida);
 }
 

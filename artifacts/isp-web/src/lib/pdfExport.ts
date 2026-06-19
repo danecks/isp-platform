@@ -592,6 +592,22 @@ export class IspPdf {
     this.doc.save(filename);
   }
 
+  /**
+   * Devuelve el PDF (con pies de página) como base64 SIN descargarlo, para
+   * subirlo a un servicio externo (p. ej. Google Drive). No llamar junto con
+   * `save()` sobre la misma instancia: ambos dibujan el pie de página.
+   */
+  toBase64(): string {
+    const totalPages = this.doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      this.doc.setPage(i);
+      this.drawFooter(i, totalPages);
+    }
+    const datauri = this.doc.output("datauristring");
+    const comma = datauri.indexOf(",");
+    return comma >= 0 ? datauri.slice(comma + 1) : datauri;
+  }
+
   // ─── Exportar CSV ────────────────────────────────────────────────────────────
   static exportCsv(columnas: string[], filas: (string | number)[][], filename: string): void {
     const escape = (v: string | number) => {

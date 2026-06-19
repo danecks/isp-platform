@@ -13,11 +13,12 @@ import { useState, useEffect, useRef, type ElementType } from "react";
     TrendingDown, Minus, ShieldAlert, ShieldCheck, ShieldOff,
     ArrowUpRight, ArrowDownRight, Repeat2, ArrowLeftRight, MapPinned, Map, History,
     UserCog, Sun, Umbrella, CheckCircle2, Info, ChevronRight, QrCode, Download,
-    ClipboardList, FileText, Scale, FileSignature, Printer, Camera,
-    CalendarClock, Trash2,
+    ClipboardList, FileText, Scale, FileSignature, Camera,
+    CalendarClock, Trash2, UploadCloud,
   } from "lucide-react";
   import { useToast } from "@/hooks/use-toast";
   import { generarContratoLaboral, cargarPatronoDesdeConfig, type DatosContratoLaboral } from "@/lib/pdfRrhh";
+  import { guardarEnDrive } from "@/lib/guardarEnDrive";
   import { useDeleteMode } from "@/contexts/DeleteModeContext";
   import DescansoSemanalEditor from "../../components/DescansoSemanalEditor";
   import { getSessionToken } from "@/lib/httpClient";
@@ -475,9 +476,13 @@ export function TabContratos({ emp }: { emp: Empleado }) {
         return;
       }
 
-      await generarContratoLaboral(datos);
+      const res = await generarContratoLaboral(datos, "drive");
+      if (res) {
+        await guardarEnDrive("contrato", res.filename, res.base64);
+        toast({ title: "Guardado en Google Drive", description: `Carpeta «Contratos» — ${res.filename}` });
+      }
     } catch (err) {
-      toast({ title: "Error", description: "No se pudo generar el contrato.", variant: "destructive" });
+      toast({ title: "No se pudo guardar en Drive", description: (err as Error)?.message || "Revisa la conexión con Google Drive.", variant: "destructive" });
       // eslint-disable-next-line no-console
       console.error(err);
     } finally {
@@ -496,7 +501,7 @@ export function TabContratos({ emp }: { emp: Empleado }) {
         <p className="text-emerald-300 text-xs font-semibold mb-1">📄 Generador conforme al Código de Trabajo de Guatemala</p>
         <p className="text-white/50 text-[11px] leading-relaxed">
           Decreto 1441. Los contratos se generan con los datos del empleado y los datos del patrono configurados en el sistema.
-          Imprime, firma con el trabajador y archiva una copia en el expediente.
+          Al generar, el contrato se guarda en tu Google Drive (carpeta «Contratos») en lugar de descargarse al equipo.
         </p>
       </div>
 
@@ -520,7 +525,7 @@ export function TabContratos({ emp }: { emp: Empleado }) {
           disabled={generando !== null}
           className="flex items-center justify-center gap-2 px-4 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-colors"
         >
-          {generando === "inicial" ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+          {generando === "inicial" ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
           <div className="text-left leading-tight">
             <div>Contrato Inicial</div>
             <div className="text-[10px] opacity-80 font-normal">60 días de prueba (Art. 81)</div>
@@ -531,7 +536,7 @@ export function TabContratos({ emp }: { emp: Empleado }) {
           disabled={generando !== null}
           className="flex items-center justify-center gap-2 px-4 py-3.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-colors"
         >
-          {generando === "post_prueba" ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+          {generando === "post_prueba" ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
           <div className="text-left leading-tight">
             <div>Contrato Post-Prueba</div>
             <div className="text-[10px] opacity-80 font-normal">Indefinido (Art. 25)</div>

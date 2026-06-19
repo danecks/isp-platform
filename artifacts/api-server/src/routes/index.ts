@@ -75,6 +75,7 @@ import { visitasRouter } from "./visitas";
 import { asignacionesRecursosRouter } from "./asignaciones-recursos";
 import pushRouter from "./push";
 import deviceReportsRouter from "./device-reports";
+import { driveRouter } from "./drive";
 
 const router: IRouter = Router();
 
@@ -157,5 +158,6 @@ router.use(agenteSupervisionRouter);
 router.use(agenteSupervisionJornadaRouter);
 router.use(pushRouter);
 router.use(deviceReportsRouter);
+router.use(driveRouter);
 
 export default router;
