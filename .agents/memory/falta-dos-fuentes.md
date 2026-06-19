@@ -54,6 +54,16 @@ las HE que esta operación realmente anuló (las que no estaban ya anuladas). Si
 incluyes una que ya venía anulada de antes, al reactivar/rechazar la "revives" por
 error.
 
+**Lectura del tablero: la fuente 2 (bandera) SOLO aplica HOY.** La fuente 1
+(`eventos_rrhh` 'falta') tiene fecha y se filtra por la fecha consultada; la fuente 2
+(`estado_operativo_puesto='faltando'`) es estado ACTUAL sin fecha. En el UNION del
+tablero la fuente 2 debe ir condicionada a `fechaConsultada === todayGT()`
+(`AND $n::boolean = TRUE`), o un titular marcado faltante un día aparece faltante en
+TODAS las fechas (pasadas y futuras) que se naveguen. No redefine "ausente actual":
+una bandera vieja aún encendida sigue mostrándose HOY hasta cubrir/anular. El segundo
+bloque del tablero (custodiaFaltaSet) ya es date-scoped (solo eventos_rrhh), no toca
+la bandera.
+
 **Quién crea las HE par:** `/sustituir` crea falta+HE juntas en el acto
 (`genera_horas_extra=FALSE` en esa ruta). `/asignar` registra la cobertura con
 `genera_horas_extra` correcto pero NO crea el evento HE — ese hueco lo llena el

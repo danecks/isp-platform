@@ -425,7 +425,17 @@ router.get("/operaciones/tablero", async (req, res) => {
     // ── Verificar faltas registradas para la fecha consultada ──────────────────
     // Si el titular que trabaja hoy tiene un evento 'falta' en eventos_rrhh,
     // el puesto se muestra como descubierto (a menos que ya haya un relevo cubriendo).
+    //
+    // DOS fuentes de falta:
+    //  1. eventos_rrhh (tipo_evento='falta'): tiene FECHA → se filtra por la fecha
+    //     consultada. Es la fuente histórica (el evento se crea al cerrar el día).
+    //  2. puestos_operativos.estado_operativo_puesto='faltando': es una bandera de
+    //     ESTADO ACTUAL, SIN fecha (se enciende al marcar la falta en vivo y solo se
+    //     apaga al cubrir/anular). Por eso SOLO debe aplicar cuando se ve HOY; si se
+    //     usara en cualquier fecha, una falta marcada un día haría aparecer faltante
+    //     al titular en TODOS los días siguientes aunque no tuviera falta ese día.
     {
+      const esHoy = fechaConsultada === todayGT();
       const { rows: faltasRows } = await pool.query(`
         SELECT employee_id FROM eventos_rrhh
         WHERE tipo_evento = 'falta'
@@ -436,7 +446,8 @@ router.get("/operaciones/tablero", async (req, res) => {
         WHERE estado_operativo_puesto = 'faltando'
           AND falta_employee_id IS NOT NULL
           AND activo = TRUE
-      `, [fechaConsultada]);
+          AND $2::boolean = TRUE
+      `, [fechaConsultada, esHoy]);
 
       const faltaSet = new Set(faltasRows.map((f: any) => Number(f.employee_id)));
 
