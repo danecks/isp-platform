@@ -106,6 +106,10 @@ function calcularLinea(
     horasContrato:    hc,
     faltas,
     suspensiones:     susp,
+    // Días de descuento por turno (24h=3, 12h=2, otros=1), ya topados a un séptimo
+    // por semana y con clawback de anticipados, congelados en el snapshot del cierre.
+    // Se usa como fuente autoritativa para que el pago coincida con la pre-planilla.
+    diasDescuento:    toNum(row.total_dias_descuento),
     horasExtra:       he,
     periodoTotalDias,
     frecuenciaPago:   frecuencia,

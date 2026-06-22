@@ -161,7 +161,11 @@ export function calcularBruto(p: BrutoParams): BrutoResult {
     : esQuincenal
       ? sueldoDia * DIAS_QUINCENA_FIJA
       : sueldoDia * p.periodoTotalDias;
-  const diasDesc      = (p.diasDescuento != null && p.diasDescuento > 0)
+  // Si se provee diasDescuento (días de descuento por turno, ya topado a un séptimo
+  // por semana en el query consolidado), es la fuente autoritativa AUNQUE sea 0
+  // (p.ej. faltas rechazadas por RRHH → no se descuenta). Solo se cae al conteo de
+  // faltas cuando diasDescuento no viene (callers de validación/tests).
+  const diasDesc      = (p.diasDescuento != null)
     ? p.diasDescuento + p.suspensiones
     : p.faltas + p.suspensiones;
   const descFaltas    = sueldoDia * diasDesc;

@@ -113,9 +113,27 @@ const QUERY_CONSOLIDADO = `
        AND n.requiere_revision_rrhh = TRUE
       THEN n.horas_extra::numeric ELSE 0 END), 0)                                        AS horas_extra_pendientes,
 
-    -- Total días de descuento por faltas (según turno: 3d para 24h, 2d para 12h)
+    -- Total días de descuento por faltas (según turno: 24h=3, 12h=2, otros=1).
+    -- Cada falta de 12h/24h trae 1 "séptimo" embebido (el día extra sobre los días
+    -- realmente no trabajados). Por ley solo se pierde UN séptimo por semana
+    -- (lun–dom), así que restamos los séptimos duplicados: por cada semana ISO con
+    -- más de una falta de 12h/24h se descuenta (cnt-1) séptimos de más.
+    -- Resultado: 12h 2 faltas misma semana = 3 (no 4); 24h 2 faltas = 5 (no 6).
     COALESCE(SUM(CASE WHEN n.falta = TRUE AND COALESCE(n.impacto_nomina,'pendiente') != 'rechazado_rrhh'
-                      THEN COALESCE(n.dias_descuento, 1) ELSE 0 END), 0)        AS total_dias_descuento,
+                      THEN COALESCE(n.dias_descuento, 1) ELSE 0 END), 0)
+    - COALESCE((
+        SELECT SUM(GREATEST(0, cnt - 1))::int
+          FROM (
+            SELECT COUNT(DISTINCT nd.fecha) AS cnt
+              FROM novedades_nomina_diarias nd
+             WHERE nd.employee_id = e.id
+               AND nd.fecha BETWEEN $1::date AND $2::date
+               AND nd.falta = TRUE
+               AND COALESCE(nd.impacto_nomina, 'pendiente') != 'rechazado_rrhh'
+               AND COALESCE(nd.dias_descuento, 1) >= 2
+             GROUP BY date_trunc('week', nd.fecha::date)
+          ) wk
+      ), 0)                                                                     AS total_dias_descuento,
 
     -- Relevos: días en que el colaborador cubrió un puesto distinto al suyo titular
     COUNT(DISTINCT n.fecha) FILTER (
@@ -463,6 +481,15 @@ interface AjusteAnticipadoEmpleado {
   detalle: { fecha: string; dias: number }[];
 }
 
+// Lunes (inicio de semana, lun–dom) de la fecha dada, en formato YYYY-MM-DD.
+// Equivale a date_trunc('week', fecha) de Postgres (semana basada en lunes).
+function lunesDeSemana(fechaISO: string): string {
+  const d = new Date(fechaISO.slice(0, 10) + "T00:00:00Z");
+  const dow = d.getUTCDay();                 // 0=domingo … 6=sábado
+  d.setUTCDate(d.getUTCDate() + (dow === 0 ? -6 : 1 - dow));
+  return d.toISOString().slice(0, 10);
+}
+
 // Registros anticipados pendientes (de cierres previos) cuya fecha YA está
 // cerrada en el pizarrón. Devuelve el descuento por empleado (clawback) y los
 // registros fuente para marcarlos reconciliados al cerrar el período actual.
@@ -529,6 +556,8 @@ async function reconciliarAnticipados(desde: string): Promise<{
         AND COALESCE(n.impacto_nomina, 'pendiente') != 'rechazado_rrhh'`,
     [fechas]
   );
+  // empId → (lunes de semana → # de faltas de 12h/24h, las que traen séptimo embebido)
+  const septimosSemana = new Map<number, Map<string, number>>();
   for (const f of faltas) {
     const id = Number(f.employee_id);
     // Saltar a quien NO fue pagado de fe ese día (no estaba en el snapshot).
@@ -542,6 +571,21 @@ async function reconciliarAnticipados(desde: string): Promise<{
     }
     e.dias_descuento += dias;
     e.detalle.push({ fecha: f.fecha, dias });
+    if (dias >= 2) {
+      let wk = septimosSemana.get(id);
+      if (!wk) { wk = new Map(); septimosSemana.set(id, wk); }
+      const k = lunesDeSemana(f.fecha);
+      wk.set(k, (wk.get(k) ?? 0) + 1);
+    }
+  }
+  // Tope: un solo séptimo por semana (lun–dom) también en el clawback de
+  // anticipados. Por cada semana con más de una falta de 12h/24h, restar los
+  // séptimos duplicados (mismo criterio que el query consolidado del período).
+  for (const [id, wk] of septimosSemana) {
+    let dup = 0;
+    for (const cnt of wk.values()) dup += Math.max(0, cnt - 1);
+    const e = porEmpleado.get(id);
+    if (e && dup > 0) e.dias_descuento = Math.max(0, e.dias_descuento - dup);
   }
   return {
     porEmpleado,

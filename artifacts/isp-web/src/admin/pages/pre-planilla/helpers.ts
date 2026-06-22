@@ -89,9 +89,12 @@ export function calcularTotalEstimado(col: ColaboradorPre, periodoTotalDias: num
   if (!sb || !periodoTotalDias) return null;
   const sueldoDia = sb / 30;
   const sueldoPeriodo = sueldoDia * periodoTotalDias;
+  // total_dias_descuento ya viene topado a un séptimo por semana desde el backend
+  // y es la fuente autoritativa (coincide con lo que paga la planilla final), aun
+  // cuando sea 0 (p.ej. faltas rechazadas por RRHH no se descuentan).
   const diasDescuento = Number(col.total_dias_descuento ?? 0);
   const suspensiones = Number(col.suspensiones);
-  const diasDesc = (diasDescuento > 0 ? diasDescuento : Number(col.faltas)) + suspensiones;
+  const diasDesc = diasDescuento + suspensiones;
   const descFaltas = sueldoDia * diasDesc;
   const horasDia = col.horas_contrato ? col.horas_contrato / 6 : 8;
   const valorHora = sueldoDia / horasDia;
