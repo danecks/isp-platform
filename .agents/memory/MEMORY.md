@@ -2,6 +2,7 @@
 - [HE por cobertura: detección descanso](he-cobertura-deteccion-descanso.md) — la regla es "HE solo si el que cubre estaba en descanso/vacaciones"; detectarlo con puesto_slots.empleado_id (puesto_titulares vacía, titular_employee_id NULL).
 - [Anular/Reactivar falta dos fuentes](falta-dos-fuentes.md) — el pizarrón lee faltando de slot + eventos_rrhh (UNION); anular/reactivar deben tocar ambas; snapshot del HE par solo si esta op lo anuló.
 - [HE de cobertura en vivo](he-materializacion-en-vivo.md) — materializar HE desde novedad.horas_extra (no genera_horas_extra, que sustitución marca FALSE); helper idempotente con misma clave de dedupe del cierre → sin doble pago.
+- [Tipo de personal_slots vs handler](personal-slots-tipo-constraint.md) — el CHECK personal_slots_tipo_chk debe incluir todos los tipos que el handler inserta (supervisor/jefe_servicio/administrativo) o falla "Error al crear personal_slot".
 - [Falta personal de oficina](falta-personal-oficina.md) — supervisores/jefes/administrativos tienen su par de endpoints falta-personal/anular (sin puesto); guardias usan /liberar; validar TIPOS_PERSONAL_OFICINA en AMBAS rutas.
 - [Tablero SSA visibilidad](tablero-ssa-visibilidad.md) — el tablero usa fecha <= CURRENT_DATE a propósito (no BETWEEN); SSA activada sigue visible mientras esté abierta aunque venza; salida por estado, no por fecha.
 - [Typecheck baseline api-server](typecheck-baseline.md) — el typecheck del api-server está rojo de base (no es regresión tuya); cómo distinguir errores propios.

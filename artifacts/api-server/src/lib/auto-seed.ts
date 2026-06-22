@@ -5735,9 +5735,15 @@ Por favor ingresa al sistema o responde para continuar.',
         activo                  BOOLEAN NOT NULL DEFAULT TRUE,
         created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT personal_slots_tipo_chk CHECK (tipo IN ('supervisor','administrativo'))
+        CONSTRAINT personal_slots_tipo_chk CHECK (tipo IN ('supervisor','jefe_servicio','administrativo'))
       )
     `);
+    // PERS-SLOT-TIPO-02: ampliar el CHECK para admitir 'jefe_servicio'. El handler
+    // ya valida tipo='jefe_servicio' (personal-slots.ts), pero las tablas creadas
+    // antes solo permitían ('supervisor','administrativo') y rechazaban a los jefes
+    // de servicio con "violates check constraint personal_slots_tipo_chk".
+    await pool.query(`ALTER TABLE personal_slots DROP CONSTRAINT IF EXISTS personal_slots_tipo_chk`);
+    await pool.query(`ALTER TABLE personal_slots ADD CONSTRAINT personal_slots_tipo_chk CHECK (tipo IN ('supervisor','jefe_servicio','administrativo'))`);
     await pool.query(`CREATE INDEX IF NOT EXISTS persslot_emp    ON personal_slots(employee_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS persslot_tipo   ON personal_slots(tipo) WHERE activo = TRUE`);
     await pool.query(`CREATE INDEX IF NOT EXISTS persslot_activo ON personal_slots(activo) WHERE activo = TRUE`);
