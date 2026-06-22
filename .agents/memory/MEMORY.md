@@ -51,3 +51,4 @@
 - [Historial coberturas dos fuentes](historial-coberturas-dos-fuentes.md) — el "Historial → Puestos cubiertos" del detalle debe unir cobertura_segmentos + novedades_nomina_diarias (dedupe por emp+fecha+puesto), o pierde coberturas que el Anexo sí muestra.
 - [Tope semanal del séptimo](septimo-tope-semanal.md) — el séptimo embebido en dias_descuento se pierde 1 vez/semana ISO (tope en total_dias_descuento); planilla final paga diasDescuento (antes bug 1/falta) → pantalla=pago.
 - [Documentos a Google Drive](drive-documentos.md) — contratos/actas/HE suben a Drive (carpetas por tipo) en vez de descargar; patrón salida dual "descargar"|"drive" en pdfRrhh; /drive sin módulo a propósito (lo usan empleados + eventos_rrhh).
+- [Pizarrón envía fecha DD-MM-YYYY](pizarron-fecha-dmy.md) — fechaHoyStr/fechaVista mandan DD-MM-YYYY; endpoints que castean ::date deben normalizar a ISO (toISODate) o PostgreSQL falla con DateTimeParseError 22008.

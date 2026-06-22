@@ -4,6 +4,17 @@ import { logger } from "../lib/logger";
 
 const incentivosRouter = Router();
 
+// Normaliza una fecha a ISO (YYYY-MM-DD). El pizarrón operativo envía las
+// fechas en formato guatemalteco DD-MM-YYYY (fechaHoyStr/fechaVista); PostgreSQL
+// no puede castear "22-06-2026" a ::date y la inserción falla con
+// DateTimeParseError (22008). Acepta tanto DD-MM-YYYY como ISO y devuelve ISO.
+function toISODate(v: unknown): string {
+  const s = String(v ?? "").trim();
+  const dmy = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+  return s.slice(0, 10);
+}
+
 // ─── GET /api/incentivos ──────────────────────────────────────────────────────
 // Lista incentivos cash con filtros opcionales
 // Query params: fecha, fechaDesde, fechaHasta, employeeId, clienteId, estado, puestoId
@@ -92,6 +103,7 @@ incentivosRouter.post("/incentivos", async (req, res) => {
   if (!employeeId || !employeeNombre || !fecha || !monto) {
     return res.status(400).json({ error: "employeeId, employeeNombre, fecha y monto son requeridos" });
   }
+  const fechaISO = toISODate(fecha);
   if (isNaN(Number(monto)) || Number(monto) <= 0) {
     return res.status(400).json({ error: "monto debe ser un número positivo" });
   }
@@ -112,7 +124,7 @@ incentivosRouter.post("/incentivos", async (req, res) => {
         WHERE employee_id = $1 AND fecha = $2::date AND tipo = 'he_efectivo'
           AND puesto_id = $3
         LIMIT 1
-      `, [Number(employeeId), fecha, puestoId ? Number(puestoId) : null]);
+      `, [Number(employeeId), fechaISO, puestoId ? Number(puestoId) : null]);
       if (dup.length > 0) {
         return res.status(409).json({ error: "Ya existe un pago HE en efectivo para este agente/fecha/puesto" });
       }
@@ -131,7 +143,7 @@ incentivosRouter.post("/incentivos", async (req, res) => {
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
           RETURNING *
         `, [
-          Number(employeeId), employeeNombre, fecha,
+          Number(employeeId), employeeNombre, fechaISO,
           clienteId ? Number(clienteId) : null, clienteNombre ?? null,
           sedeId ? Number(sedeId) : null,
           puestoId ? Number(puestoId) : null, puestoNombre ?? null,
@@ -149,7 +161,7 @@ incentivosRouter.post("/incentivos", async (req, res) => {
             updated_at = NOW()
           WHERE fecha = $1::date AND employee_id = $2
             AND impacto_nomina = 'pendiente'
-        `, [fecha, Number(employeeId), Number(monto).toFixed(2)]);
+        `, [fechaISO, Number(employeeId), Number(monto).toFixed(2)]);
 
         await client.query(`
           UPDATE eventos_rrhh SET
@@ -162,7 +174,7 @@ incentivosRouter.post("/incentivos", async (req, res) => {
             AND fecha::date = $2::date
             AND tipo_evento = 'horas_extra'
             AND estado = 'pendiente_aprobacion'
-        `, [Number(employeeId), fecha, autorizadoPor ?? 'sistema']);
+        `, [Number(employeeId), fechaISO, autorizadoPor ?? 'sistema']);
 
         await client.query("COMMIT");
         logger.info({ incentivo: rows[0], employeeId, fecha }, "HE pagado en efectivo (tx completa) — excluido de planilla");
@@ -184,7 +196,7 @@ incentivosRouter.post("/incentivos", async (req, res) => {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         RETURNING *
       `, [
-        Number(employeeId), employeeNombre, fecha,
+        Number(employeeId), employeeNombre, fechaISO,
         clienteId ? Number(clienteId) : null, clienteNombre ?? null,
         sedeId ? Number(sedeId) : null,
         puestoId ? Number(puestoId) : null, puestoNombre ?? null,
