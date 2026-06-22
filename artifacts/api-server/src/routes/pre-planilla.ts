@@ -695,24 +695,71 @@ prePlanillaRouter.get("/nomina/pre-planilla/detalle/:employeeId", async (req, re
         ORDER BY ic.fecha ASC
       `, [employeeId, desde, hasta]),
 
+      // Puestos cubiertos en el período. Fuente rica: cobertura_segmentos (pizarrón).
+      // Pero hay coberturas que solo quedan en novedades_nomina_diarias (la fuente
+      // que usa el Anexo Coberturas). Para que el historial coincida con el anexo,
+      // se unen ambas: los segmentos + las coberturas de novedades de días que NO
+      // tienen segmento (evita duplicar).
       pool.query(`
-        SELECT
-          cs.fecha,
-          cs.puesto_id,
-          po.nombre AS puesto_nombre,
-          po.cliente_nombre,
-          cs.tipo_cobertura,
-          cs.hora_inicio,
-          cs.hora_fin,
-          cs.horas_calculadas,
-          cs.genera_horas_extra,
-          cs.cobertura_alcance,
-          cs.tipo_novedad
-        FROM cobertura_segmentos cs
-        LEFT JOIN puestos_operativos po ON po.id = cs.puesto_id
-        WHERE cs.employee_id = $1
-          AND cs.fecha BETWEEN $2 AND $3
-        ORDER BY cs.fecha ASC, cs.hora_inicio ASC
+        SELECT * FROM (
+          SELECT
+            cs.fecha,
+            cs.puesto_id,
+            po.nombre AS puesto_nombre,
+            po.cliente_nombre,
+            cs.tipo_cobertura,
+            cs.hora_inicio,
+            cs.hora_fin,
+            cs.horas_calculadas,
+            cs.genera_horas_extra,
+            cs.cobertura_alcance,
+            cs.tipo_novedad
+          FROM cobertura_segmentos cs
+          LEFT JOIN puestos_operativos po ON po.id = cs.puesto_id
+          WHERE cs.employee_id = $1
+            AND cs.fecha BETWEEN $2 AND $3
+
+          UNION ALL
+
+          SELECT
+            n.fecha,
+            n.puesto_cubierto_id AS puesto_id,
+            COALESCE(n.puesto_cubierto_nombre, po.nombre) AS puesto_nombre,
+            COALESCE(
+              (SELECT p2.cliente_nombre FROM puestos_operativos p2
+                 WHERE p2.id = n.puesto_cubierto_id LIMIT 1),
+              (SELECT p3.cliente_nombre FROM puestos_operativos p3
+                 WHERE p3.titular_employee_id = n.employee_id AND p3.activo = TRUE LIMIT 1)
+            ) AS cliente_nombre,
+            CASE
+              WHEN n.puesto_cubierto_id IS NOT NULL
+                AND n.puesto_cubierto_id IS DISTINCT FROM n.puesto_titular_id THEN 'relevo'
+              WHEN n.descanso_trabajado THEN 'descanso_trabajado'
+              ELSE 'cobertura'
+            END AS tipo_cobertura,
+            NULL::varchar AS hora_inicio,
+            NULL::varchar AS hora_fin,
+            n.horas_trabajadas AS horas_calculadas,
+            (n.horas_extra > 0) AS genera_horas_extra,
+            NULL::varchar AS cobertura_alcance,
+            n.tipo_novedad
+          FROM novedades_nomina_diarias n
+          LEFT JOIN puestos_operativos po ON po.id = n.puesto_cubierto_id
+          WHERE n.employee_id = $1
+            AND n.fecha BETWEEN $2 AND $3
+            AND n.trabajo_dia = TRUE
+            AND (
+              (n.puesto_cubierto_id IS NOT NULL AND n.puesto_cubierto_id IS DISTINCT FROM n.puesto_titular_id)
+              OR n.descanso_trabajado = TRUE
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM cobertura_segmentos cs2
+              WHERE cs2.employee_id = n.employee_id
+                AND cs2.fecha = n.fecha
+                AND cs2.puesto_id IS NOT DISTINCT FROM n.puesto_cubierto_id
+            )
+        ) u
+        ORDER BY u.fecha ASC, u.hora_inicio ASC NULLS LAST
       `, [employeeId, desde, hasta]),
     ]);
 
