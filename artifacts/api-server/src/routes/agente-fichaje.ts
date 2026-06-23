@@ -2893,6 +2893,7 @@ agenteFichajeRouter.get("/municion-puestos", async (req, res) => {
              po.nombre AS puesto_nombre, po.cliente_nombre
       FROM puesto_municion pm
       JOIN puestos_operativos po ON po.id = pm.puesto_id
+      WHERE pm.activo = TRUE
       ORDER BY po.cliente_nombre, po.nombre
     `);
     res.json(rows);
@@ -2909,7 +2910,7 @@ agenteFichajeRouter.post("/municion-puestos", async (req, res) => {
     const { rows } = await pool.query(`
       INSERT INTO puesto_municion (puesto_id, descripcion, cantidad_asignada)
       VALUES ($1,$2,$3)
-      ON CONFLICT ON CONSTRAINT pm_puesto_activo
+      ON CONFLICT (puesto_id) WHERE activo = TRUE
       DO UPDATE SET descripcion=$2, cantidad_asignada=$3, updated_at=NOW()
       RETURNING *
     `, [puesto_id, descripcion, cantidad_asignada]);

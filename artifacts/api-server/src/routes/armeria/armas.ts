@@ -552,6 +552,91 @@ armasRouter.delete("/armas/:id", async (req, res) => {
   }
 });
 
+// ── POST /api/armas/:id/asignar-responsable ──────────────────────────────────
+// Asigna manualmente el responsable (custodio) de un arma, sin depender del
+// cálculo automático por turno. Útil cuando el puesto no tiene titular en el
+// modelo de turnos (p.ej. puesto inactivo) o cuando el operador necesita
+// corregir quién tiene físicamente el arma. employee_id null/"" deja el arma
+// sin responsable (cierra la custodia abierta).
+armasRouter.post("/armas/:id/asignar-responsable", async (req, res) => {
+  const armaId = Number(req.params.id);
+  if (!Number.isFinite(armaId)) return res.status(400).json({ error: "id inválido" });
+  // employee_id puede venir ausente/null/"" (quitar responsable). Si viene un
+  // valor, debe ser numérico válido — un string basura no debe degradar a "quitar".
+  const employeeIdRaw = req.body.employee_id;
+  const quitarResponsable = employeeIdRaw == null || employeeIdRaw === "";
+  const employeeId = quitarResponsable ? null : Number(employeeIdRaw);
+  if (!quitarResponsable && !Number.isInteger(employeeId)) {
+    return res.status(400).json({ error: "employee_id inválido" });
+  }
+  const usuario = (req.body.usuario as string) || "sistema";
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // Lock de la fila del arma para serializar asignaciones concurrentes y
+    // evitar dos custodias abiertas simultáneas para la misma arma.
+    const { rows: aRows } = await client.query(
+      `SELECT id, codigo, puesto_id FROM armas WHERE id=$1 FOR UPDATE`, [armaId]
+    );
+    if (!aRows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Arma no encontrada" }); }
+    const arma = aRows[0];
+
+    let nombre: string | null = null;
+    if (employeeId) {
+      const { rows: eRows } = await client.query(
+        `SELECT id, nombre_completo, estado_laboral FROM employees WHERE id=$1`, [employeeId]
+      );
+      if (!eRows[0]) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Empleado no encontrado" }); }
+      if (eRows[0].estado_laboral !== "activo") { await client.query("ROLLBACK"); return res.status(400).json({ error: "El empleado seleccionado no está activo" }); }
+      nombre = eRows[0].nombre_completo;
+    }
+
+    // No-op: si la custodia abierta ya es de este mismo empleado, no fragmentar
+    // el historial con un cierre + alta redundantes.
+    const { rows: abiertaRows } = await client.query(
+      `SELECT employee_id FROM arma_custodia WHERE arma_id=$1 AND fecha_fin IS NULL`, [armaId]
+    );
+    const abiertaEmpId = abiertaRows[0]?.employee_id ?? null;
+    if (abiertaEmpId === (employeeId ?? null)) {
+      await client.query("COMMIT");
+      return res.json({
+        ok: true, sin_cambio: true, codigo: arma.codigo,
+        responsable: employeeId ? { id: employeeId, nombre } : null,
+        sin_responsable: !employeeId,
+        nueva_custodia: null,
+      });
+    }
+
+    // Cerrar la custodia abierta actual (si la hay) antes de abrir la nueva.
+    await client.query(
+      `UPDATE arma_custodia SET fecha_fin=NOW() WHERE arma_id=$1 AND fecha_fin IS NULL`, [armaId]
+    );
+
+    let nuevaCustodia: any = null;
+    if (employeeId) {
+      const fecha = new Date().toISOString().slice(0, 10);
+      const { rows: nc } = await client.query(`
+        INSERT INTO arma_custodia (arma_id, employee_id, puesto_id, tipo_origen, notas, registrado_por)
+        VALUES ($1,$2,$3,'manual',$4,$5)
+        RETURNING *
+      `, [armaId, employeeId, arma.puesto_id, `Responsable asignado manualmente — ${fecha}`, usuario]);
+      nuevaCustodia = nc[0];
+    }
+    await client.query("COMMIT");
+    res.json({
+      ok: true, codigo: arma.codigo,
+      responsable: employeeId ? { id: employeeId, nombre } : null,
+      sin_responsable: !employeeId,
+      nueva_custodia: nuevaCustodia,
+    });
+  } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => {});
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // ── POST /api/armas/:id/sync-custodia ─────────────────────────────────────────
 armasRouter.post("/armas/:id/sync-custodia", async (req, res) => {
   const armaId = Number(req.params.id);

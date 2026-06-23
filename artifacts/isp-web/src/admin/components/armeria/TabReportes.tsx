@@ -5,6 +5,7 @@ import {
   Target, RefreshCw, Package, FileText, Search,
 } from "lucide-react";
 import { apiRequest } from "@/lib/httpClient";
+import { IspPdf } from "@/lib/pdfExport";
 
 const API = "/api";
 
@@ -61,6 +62,33 @@ function descargarCSV(filename: string, columnas: { key: string; label: string }
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// ─── Helper: descargar PDF membretado ──────────────────────────────────────
+type PdfCol = { key: string; label: string; fmt?: (v: any, row: any) => string };
+async function descargarPDF(spec: {
+  titulo: string;
+  subtitulo?: string;
+  filename: string;
+  columnas: PdfCol[];
+  filas: any[];
+  cards?: { label: string; valor: string | number; color?: "blue" | "green" | "red" | "yellow" | "gray" }[];
+}) {
+  try {
+    const cols = spec.columnas.map(c => c.label);
+    const body = spec.filas.map(r =>
+      spec.columnas.map(c => (c.fmt ? c.fmt(r[c.key], r) : (r[c.key] == null ? "" : String(r[c.key])))),
+    );
+    const pdf = await new IspPdf({ titulo: spec.titulo, subtitulo: spec.subtitulo, orientation: "landscape" }).build();
+    if (spec.cards?.length) pdf.addResumenCards(spec.cards);
+    pdf.addTabla(cols, body);
+    pdf.save(spec.filename);
+  } catch (err) {
+    console.error("Error al generar PDF de armas:", err);
+    alert("No se pudo generar el PDF. Intente de nuevo.");
+  }
+}
+const fmtTipo = (v: any) => TIPO_LABELS[v] ?? v ?? "";
+const fmtOrigen = (v: any) => ORIGEN_LABELS[v] ?? v ?? "";
 
 // ─── Sub-tab: Custodia diaria ─────────────────────────────────────────────
 interface RegCustodia {
@@ -122,6 +150,30 @@ function SubCustodia() {
           ], filtered)}
           className="bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 border border-emerald-600/40 rounded px-3 py-1.5 text-sm flex items-center gap-1.5">
           <Download className="w-3.5 h-3.5" /> Exportar CSV
+        </button>
+        <button disabled={filtered.length === 0}
+          onClick={() => descargarPDF({
+            titulo: "Custodia diaria de armas",
+            subtitulo: `Fecha: ${fmtFecha(fecha)}`,
+            filename: `custodia-diaria-${fecha}.pdf`,
+            filas: filtered,
+            columnas: [
+              { key: "arma_codigo", label: "Código" },
+              { key: "tipo", label: "Tipo", fmt: fmtTipo },
+              { key: "calibre", label: "Calibre" },
+              { key: "serie", label: "Serie" },
+              { key: "numero_tenencia", label: "Tenencia" },
+              { key: "empleado_nombre", label: "Custodio" },
+              { key: "empleado_dpi", label: "DPI" },
+              { key: "cliente_nombre", label: "Cliente" },
+              { key: "puesto_nombre", label: "Puesto" },
+              { key: "fecha_inicio", label: "Desde", fmt: fmtDatetime },
+              { key: "fecha_fin", label: "Hasta", fmt: (v) => (v ? fmtDatetime(v) : "Vigente") },
+              { key: "tipo_origen", label: "Origen", fmt: fmtOrigen },
+            ],
+          })}
+          className="bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-rose-300 border border-rose-600/40 rounded px-3 py-1.5 text-sm flex items-center gap-1.5">
+          <FileText className="w-3.5 h-3.5" /> Descargar PDF
         </button>
         <span className="ml-auto text-xs text-gray-400">
           {data ? `${filtered.length} de ${data.total} registros` : ""}
@@ -231,6 +283,28 @@ function SubMovimientos() {
           className="bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 border border-emerald-600/40 rounded px-3 py-1.5 text-sm flex items-center gap-1.5">
           <Download className="w-3.5 h-3.5" /> Exportar CSV
         </button>
+        <button disabled={filas.length === 0}
+          onClick={() => descargarPDF({
+            titulo: "Movimientos de armas",
+            subtitulo: `${fmtFecha(desde)} → ${fmtFecha(hasta)}`,
+            filename: `movimientos-armas-${desde}_a_${hasta}.pdf`,
+            filas,
+            columnas: [
+              { key: "fecha_evento", label: "Fecha", fmt: fmtDatetime },
+              { key: "evento", label: "Evento", fmt: (v) => (v === "alta_custodia" ? "Alta" : v === "cierre_custodia" ? "Cierre" : v ?? "") },
+              { key: "arma_codigo", label: "Código" },
+              { key: "tipo", label: "Tipo", fmt: fmtTipo },
+              { key: "serie", label: "Serie" },
+              { key: "empleado_nombre", label: "Agente" },
+              { key: "cliente_nombre", label: "Cliente" },
+              { key: "puesto_nombre", label: "Puesto" },
+              { key: "tipo_origen", label: "Origen", fmt: fmtOrigen },
+              { key: "registrado_por", label: "Registrado por" },
+            ],
+          })}
+          className="bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-rose-300 border border-rose-600/40 rounded px-3 py-1.5 text-sm flex items-center gap-1.5">
+          <FileText className="w-3.5 h-3.5" /> Descargar PDF
+        </button>
         <div className="ml-auto flex items-center gap-3 text-xs">
           <span className="text-emerald-300">{altas} altas</span>
           <span className="text-amber-300">{cierres} cierres</span>
@@ -328,6 +402,24 @@ function SubMunicion() {
           className="bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 border border-emerald-600/40 rounded px-3 py-1.5 text-sm flex items-center gap-1.5">
           <Download className="w-3.5 h-3.5" /> Exportar CSV
         </button>
+        <button disabled={filas.length === 0}
+          onClick={() => descargarPDF({
+            titulo: "Munición por puesto",
+            subtitulo: `${fmtFecha(desde)} → ${fmtFecha(hasta)}`,
+            filename: `municion-${desde}_a_${hasta}.pdf`,
+            filas,
+            columnas: [
+              { key: "updated_at", label: "Última actualización", fmt: fmtDatetime },
+              { key: "descripcion", label: "Descripción" },
+              { key: "cantidad_asignada", label: "Cantidad" },
+              { key: "cliente_nombre", label: "Cliente" },
+              { key: "puesto_nombre", label: "Puesto" },
+              { key: "activo", label: "Activo", fmt: (v) => (v ? "Sí" : "No") },
+            ],
+          })}
+          className="bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-rose-300 border border-rose-600/40 rounded px-3 py-1.5 text-sm flex items-center gap-1.5">
+          <FileText className="w-3.5 h-3.5" /> Descargar PDF
+        </button>
         <span className="ml-auto text-xs text-gray-400">{filas.length} registro(s)</span>
       </div>
       {isLoading ? (
@@ -418,6 +510,25 @@ function SubSincronizaciones() {
           ], filas)}
           className="bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 border border-emerald-600/40 rounded px-3 py-1.5 text-sm flex items-center gap-1.5">
           <Download className="w-3.5 h-3.5" /> Exportar CSV
+        </button>
+        <button disabled={filas.length === 0}
+          onClick={() => descargarPDF({
+            titulo: "Sincronizaciones de custodia",
+            subtitulo: `${fmtFecha(desde)} → ${fmtFecha(hasta)}`,
+            filename: `sincronizaciones-${desde}_a_${hasta}.pdf`,
+            filas,
+            columnas: [
+              { key: "creado_en", label: "Fecha sync", fmt: fmtDatetime },
+              { key: "fecha", label: "Día efectivo", fmt: fmtFecha },
+              { key: "activo_codigo", label: "Arma" },
+              { key: "custodio_anterior_nombre", label: "Custodio anterior", fmt: (v) => v ?? "— sin custodio —" },
+              { key: "custodio_nuevo_nombre", label: "Custodio nuevo", fmt: (v) => v ?? "— sin custodio —" },
+              { key: "origen", label: "Origen" },
+              { key: "usuario", label: "Usuario" },
+            ],
+          })}
+          className="bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-rose-300 border border-rose-600/40 rounded px-3 py-1.5 text-sm flex items-center gap-1.5">
+          <FileText className="w-3.5 h-3.5" /> Descargar PDF
         </button>
         <span className="ml-auto text-xs text-gray-400">{filas.length} sincronización(es)</span>
       </div>
@@ -524,6 +635,34 @@ function SubInventario() {
           ], filas)}
           className="bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 border border-emerald-600/40 rounded px-3 py-1.5 text-sm flex items-center gap-1.5">
           <Download className="w-3.5 h-3.5" /> Exportar CSV
+        </button>
+        <button disabled={filas.length === 0}
+          onClick={() => descargarPDF({
+            titulo: "Inventario de armamento",
+            subtitulo: `Al ${fmtFecha(fecha)}`,
+            filename: `inventario-${fecha}.pdf`,
+            filas,
+            cards: data ? [
+              { label: "Total", valor: data.totales.total, color: "gray" },
+              { label: "Asignadas", valor: data.totales.asignadas, color: "green" },
+              { label: "Sin custodio", valor: data.totales.sin_custodio, color: "gray" },
+              { label: "Mantenim.", valor: data.totales.en_mantenimiento, color: "yellow" },
+              { label: "Baja", valor: data.totales.baja, color: "red" },
+            ] : undefined,
+            columnas: [
+              { key: "codigo", label: "Código" },
+              { key: "tipo", label: "Tipo", fmt: fmtTipo },
+              { key: "calibre", label: "Calibre" },
+              { key: "serie", label: "Serie" },
+              { key: "numero_tenencia", label: "Tenencia" },
+              { key: "estado", label: "Estado" },
+              { key: "custodio_nombre", label: "Custodio", fmt: (v) => v ?? "— sin custodio —" },
+              { key: "cliente_nombre", label: "Cliente" },
+              { key: "puesto_nombre", label: "Puesto" },
+            ],
+          })}
+          className="bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-rose-300 border border-rose-600/40 rounded px-3 py-1.5 text-sm flex items-center gap-1.5">
+          <FileText className="w-3.5 h-3.5" /> Descargar PDF
         </button>
       </div>
 

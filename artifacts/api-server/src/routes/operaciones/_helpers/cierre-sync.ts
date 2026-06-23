@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { calcularEstadoCiclo } from "../../../lib/turno-calc";
+import { calcularResponsablePuesto } from "../../armeria/_helpers";
 
 // ─── Helper: calcula responsable de turno en zona (para sync vehículos) ──────
 export async function calcularResponsableTurnoLocal(zonaId: number, fecha: string): Promise<any | null> {
@@ -48,7 +49,8 @@ export async function sincronizarCustodiasAlCierre(
 
   // ── Armas: usa agente real del snapshot ────────────────────────────────────
   const { rows: armas } = await pool.query(`
-    SELECT a.id, a.codigo, a.puesto_id,
+    SELECT a.id, a.codigo, a.puesto_id, a.custodio_employee_id,
+           COALESCE(po.tipo_puesto, 'normal') AS tipo_puesto,
            po.nombre AS puesto_nombre
     FROM armas a
     JOIN puestos_operativos po ON po.id = a.puesto_id
@@ -63,7 +65,19 @@ export async function sincronizarCustodiasAlCierre(
 
   for (const arma of armas) {
     const snap = snapMap.get(Number(arma.puesto_id));
-    const nuevoId = snap?.agente_id ?? null;
+    let nuevoId: number | null = snap?.agente_id ?? null;
+    if (!nuevoId) {
+      // Fallback: el snapshot no registró agente para este puesto (p.ej. está
+      // cubierto por su titular sin segmento de cobertura). Resolver desde el
+      // modelo de turnos/slots — la misma fuente que usa el pizarrón en vivo —,
+      // honrando el custodio asignado en puestos de tipo 'custodia' (rutas).
+      if (arma.tipo_puesto === "custodia" && arma.custodio_employee_id) {
+        nuevoId = Number(arma.custodio_employee_id);
+      } else {
+        const resp = await calcularResponsablePuesto(Number(arma.puesto_id), fecha);
+        if (resp) nuevoId = resp.id;
+      }
+    }
     if (!nuevoId) {
       resultadosArmas.push({ codigo: arma.codigo, cambio: false, motivo: "Puesto sin agente al cierre" });
       continue;

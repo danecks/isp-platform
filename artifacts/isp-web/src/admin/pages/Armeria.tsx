@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDeleteMode } from "@/contexts/DeleteModeContext";
 import { AdminLayout } from "../layout/AdminLayout";
 import { TabReportes } from "../components/armeria/TabReportes";
+import { TabMunicion } from "../components/armeria/TabMunicion";
 import { apiRequest, apiPatch, apiPost, ApiError } from "@/lib/httpClient";
 
 const API = "/api";
@@ -594,8 +595,42 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
   });
 
   const a = detalle ?? arma;
+  const { user } = useAuth();
+  const usuario = (user as any)?.username ?? "admin";
   const [togglingTen, setTogglingTen] = useState(false);
   const [togglingPort, setTogglingPort] = useState(false);
+
+  // ── Responsable manual ──────────────────────────────────────────────────
+  const { data: empleadosResp = [] } = useQuery<EmpleadoOpcion[]>({
+    queryKey: ["empleados-activos-armeria"],
+    queryFn: () => apiRequest<EmpleadoOpcion[]>("/api/employees?estadoLaboral=activo"),
+    staleTime: 5 * 60 * 1000,
+  });
+  const [editandoResp, setEditandoResp] = useState(false);
+  const [selEmp, setSelEmp] = useState("");
+  const [filtroEmp, setFiltroEmp] = useState("");
+  const [savingResp, setSavingResp] = useState(false);
+
+  async function guardarResponsable(employeeId: string | null) {
+    setSavingResp(true);
+    try {
+      await apiPost(`${API}/armas/${a.id}/asignar-responsable`, {
+        employee_id: employeeId ? Number(employeeId) : null,
+        usuario,
+      });
+      qc.invalidateQueries({ queryKey: ["arma-detalle", a.id] });
+      qc.invalidateQueries({ queryKey: ["arma-custodia", a.id] });
+      qc.invalidateQueries({ queryKey: ["armas"] });
+      qc.invalidateQueries({ queryKey: ["armas-estado"] });
+      setEditandoResp(false); setSelEmp(""); setFiltroEmp("");
+      toast({ title: employeeId ? "Responsable asignado" : "Arma marcada sin responsable" });
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? (e.body as { error?: string })?.error : undefined;
+      toast({ title: msg || "No se pudo asignar el responsable", variant: "destructive" });
+    } finally {
+      setSavingResp(false);
+    }
+  }
 
   async function toggleTramite(campo: "tenencia_en_tramite" | "portacion_en_tramite") {
     const setter = campo === "tenencia_en_tramite" ? setTogglingTen : setTogglingPort;
@@ -815,6 +850,87 @@ function ModalFichaArma({ arma, onClose, onEdit }: {
               <div className="mt-2 bg-yellow-500/5 border border-yellow-500/15 rounded-lg px-3 py-2">
                 <p className="text-[10px] text-yellow-400/70 uppercase tracking-wider mb-0.5">Observaciones</p>
                 <p className="text-xs text-gray-300">{a.observaciones}</p>
+              </div>
+            )}
+          </div>
+
+          {/* ── Responsable del arma (asignación manual) ── */}
+          <div className="px-5 pb-3">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <User className="w-3.5 h-3.5 text-gray-500" />
+                <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Responsable del arma</h3>
+              </div>
+              {!editandoResp && (
+                <button
+                  onClick={() => { setEditandoResp(true); setSelEmp(""); setFiltroEmp(""); }}
+                  className="text-[11px] text-blue-300 hover:text-blue-200 font-medium">
+                  {a.custodio_nombre ? "Cambiar" : "Asignar"}
+                </button>
+              )}
+            </div>
+
+            {!editandoResp ? (
+              <div className="bg-gray-800/50 rounded-lg px-3 py-2.5 flex items-center gap-2">
+                <User className="w-4 h-4 text-teal-400 flex-shrink-0" />
+                {a.custodio_nombre ? (
+                  <div className="min-w-0">
+                    <p className="text-sm text-white font-medium truncate">{a.custodio_nombre}</p>
+                    {a.custodia_desde && (
+                      <p className="text-[10px] text-gray-500">responsable desde {fmtDatetime(a.custodia_desde)}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">Sin responsable asignado</p>
+                )}
+              </div>
+            ) : (
+              <div className="bg-gray-800/50 rounded-lg px-3 py-3 space-y-2">
+                <input
+                  value={filtroEmp}
+                  onChange={e => setFiltroEmp(e.target.value)}
+                  placeholder="Buscar empleado por nombre…"
+                  className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                />
+                <select
+                  value={selEmp}
+                  onChange={e => setSelEmp(e.target.value)}
+                  size={6}
+                  className="w-full bg-gray-900 border border-gray-600 rounded-lg px-2 py-1 text-white text-sm focus:outline-none focus:border-blue-500 [&_option]:bg-slate-800">
+                  {empleadosResp
+                    .filter(e => !filtroEmp || e.nombreCompleto.toLowerCase().includes(filtroEmp.toLowerCase()))
+                    .slice(0, 200)
+                    .map(e => (
+                      <option key={e.id} value={String(e.id)}>
+                        {e.nombreCompleto}{e.tipoPersonal ? ` · ${e.tipoPersonal}` : ""}
+                      </option>
+                    ))}
+                </select>
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <button
+                    onClick={() => guardarResponsable(null)}
+                    disabled={savingResp || !a.custodio_nombre}
+                    className="text-[11px] text-rose-300 hover:text-rose-200 disabled:opacity-40 font-medium">
+                    Quitar responsable
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setEditandoResp(false); setSelEmp(""); setFiltroEmp(""); }}
+                      className="px-3 py-1.5 text-[12px] text-gray-300 bg-gray-700/50 hover:bg-gray-700 rounded-lg">
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => guardarResponsable(selEmp)}
+                      disabled={savingResp || !selEmp}
+                      className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-lg">
+                      {savingResp && <Loader2 className="w-3 h-3 animate-spin" />}
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-500">
+                  Asignación manual: queda en el historial como origen "Manual". Si el puesto tiene titular en turnos, el cierre seguirá actualizando el responsable automáticamente.
+                </p>
               </div>
             )}
           </div>
@@ -1640,7 +1756,7 @@ function TabDuplicados({ onEdit }: { onEdit: (a: any) => void }) {
 export default function Armeria() {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const [tab, setTab] = useState<"estado" | "armas" | "historial" | "duplicados" | "reportes">("estado");
+  const [tab, setTab] = useState<"estado" | "armas" | "municion" | "historial" | "duplicados" | "reportes">("estado");
   const [fechaConsulta, setFechaConsulta] = useState(hoy());
   const [modalArma, setModalArma] = useState<Arma | null | "nuevo">(null);
   const [modalFicha, setModalFicha] = useState<Arma | null>(null);
@@ -1686,6 +1802,7 @@ export default function Armeria() {
   const TABS = [
     { id: "estado",     label: "Estado Operativo", icon: Shield,         badge: 0        },
     { id: "armas",      label: "Armas",             icon: Package,        badge: 0        },
+    { id: "municion",   label: "Munición",          icon: Target,         badge: 0        },
     { id: "historial",  label: "Historial",         icon: History,        badge: 0        },
     { id: "duplicados", label: "Duplicados",        icon: Copy,           badge: totalDup },
     { id: "reportes",   label: "Reportes",          icon: FileText,       badge: 0        },
@@ -1776,6 +1893,7 @@ export default function Armeria() {
       {/* Content */}
       {tab === "estado"     && <TabEstado fecha={fechaConsulta} onFicha={a => setModalFicha(a)} />}
       {tab === "armas"      && <TabArmas onEdit={a => setModalArma(a)} onFicha={a => setModalFicha(a)} />}
+      {tab === "municion"   && <TabMunicion />}
       {tab === "historial"  && <TabHistorial />}
       {tab === "duplicados" && <TabDuplicados onEdit={a => setModalArma(a)} usuario={(user as any)?.username ?? "admin"} />}
       {tab === "reportes"   && <TabReportes />}
