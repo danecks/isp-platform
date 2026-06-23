@@ -59,11 +59,20 @@ export function ModalSegmentos({
     return `${d}-${m}-${y}`;
   })();
 
-  const { inicioMin, finMin, totalMin } = turnoBounds(
+  const turnoBase = turnoBounds(
     puesto.turno, puesto.hora_entrada, puesto.hora_salida
   );
+  // La jornada real del puesto (turnos.n) manda: un puesto de 24h puede tener
+  // guardadas solo las horas de un tramo (06:00–18:00 = 12h). Si horas_trabajo
+  // está disponible, el turno abarca esas horas reales, no las de entrada/salida.
+  const horasReales = puesto.horas_trabajo != null && puesto.horas_trabajo > 0
+    ? Number(puesto.horas_trabajo)
+    : null;
+  const inicioMin = turnoBase.inicioMin;
+  const totalMin  = horasReales != null ? horasReales * 60 : turnoBase.totalMin;
+  const finMin    = inicioMin + totalMin;
   const turnoInicioStr = minToHM(inicioMin);
-  const turnoFinStr    = minToHM(finMin);
+  const turnoFinStr    = minToHM(finMin % 1440);
 
   const segsConHora = segmentos
     .filter((s) => s.hora_inicio && s.hora_fin)

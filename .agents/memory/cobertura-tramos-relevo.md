@@ -22,3 +22,7 @@ La cobertura por tramos debe igualar el flujo normal de sustitución cuando un t
   **How to apply:** tratar todo fallo no-409 de /incentivos como toast destructivo visible ("NO quedó registrado, sigue en planilla, reintenta"); 409 = ya registrado (dedupe por employee+fecha+puesto).
 
 - El cierre (generar-novedades.ts Paso 4) preserva dias_descuento del titular (solo rellena si null/0) y no revierte 'pagado_efectivo' del cubriente.
+
+- **La jornada del puesto en el modal de tramos se deriva de `horas_trabajo` (turnos.n), no de hora_entrada/hora_salida.**
+  **Why:** un puesto de 24h (turno alternado, 2 titulares) puede tener guardadas solo las horas de un tramo (ej. 06:00–18:00 = 12h). Si el modal calcula el turno desde esas horas, muestra "12H" y aplica tarifa HE de 12h a un puesto de 24h.
+  **How to apply:** en ModalSegmentos usar `puesto.horas_trabajo` (lo provee tablero.ts) para totalMin/jornadaReal; hora_entrada solo fija el inicio. turnoBounds(entrada,salida) es fallback cuando horas_trabajo es null.
