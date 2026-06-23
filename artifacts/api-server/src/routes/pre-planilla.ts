@@ -162,7 +162,12 @@ const QUERY_CONSOLIDADO = `
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.trabajo_esperado = TRUE)            AS dias_esperados_trabajo,
     COUNT(DISTINCT n.fecha) FILTER (WHERE n.trabajo_esperado = FALSE)           AS dias_esperados_descanso,
 
-    -- Anticipos: descuento por cuota (con interés) o monto_cobro si 1 cuota
+    -- Anticipos: descuento por cuota (con interés) o monto_cobro si 1 cuota.
+    -- Se incluye TODA cuota pendiente (cuotas_pagadas < num_cuotas), no solo los
+    -- anticipos solicitados en esta quincena: un anticipo multi-cuota se cobra a
+    -- lo largo de varias quincenas, así que sus cuotas 2..n caen en períodos
+    -- posteriores a la solicitud. Se acota a fecha_solicitud <= fin de período
+    -- para no arrastrar anticipos futuros al cerrar quincenas retroactivas.
     COALESCE((
       SELECT SUM(
         CASE
@@ -173,7 +178,7 @@ const QUERY_CONSOLIDADO = `
       )
       FROM anticipos a
       WHERE a.employee_id = e.id
-        AND DATE(a.fecha_solicitud) BETWEEN $1 AND $2
+        AND DATE(a.fecha_solicitud) <= $2
         AND a.estado IN ('aprobada', 'pagada')
         AND COALESCE(a.cuotas_pagadas, 0) < COALESCE(a.num_cuotas, 1)
     ), 0)                                                                       AS anticipos_monto,
@@ -181,7 +186,7 @@ const QUERY_CONSOLIDADO = `
       SELECT COUNT(a.id)
       FROM anticipos a
       WHERE a.employee_id = e.id
-        AND DATE(a.fecha_solicitud) BETWEEN $1 AND $2
+        AND DATE(a.fecha_solicitud) <= $2
         AND a.estado IN ('aprobada', 'pagada')
         AND COALESCE(a.cuotas_pagadas, 0) < COALESCE(a.num_cuotas, 1)
     ), 0)                                                                       AS anticipos_count,
@@ -1908,8 +1913,9 @@ prePlanillaRouter.get("/nomina/pre-planilla/anexo/anticipos", async (req, res) =
         e.sede
       FROM anticipos a
       JOIN employees e ON e.id = a.employee_id
-      WHERE DATE(a.fecha_solicitud) BETWEEN $1 AND $2
+      WHERE DATE(a.fecha_solicitud) <= $2
         AND a.estado IN ('aprobada', 'pagada')
+        AND COALESCE(a.cuotas_pagadas, 0) < COALESCE(a.num_cuotas, 1)
       ORDER BY a.fecha_solicitud DESC, e.nombre_completo
     `, [desde, hasta]);
     res.json(rows);
