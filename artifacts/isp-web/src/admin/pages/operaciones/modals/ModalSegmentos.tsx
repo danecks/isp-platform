@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Layers, Loader2, Moon, Plus, Timer, Trash2, X, XCircle, Zap } from "lucide-react";
+import { DollarSign, Layers, Loader2, Moon, Plus, Timer, Trash2, UserMinus, X, XCircle, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { EmpleadoBusqueda, Puesto, Segmento } from "../types";
+import type { EmpleadoBusqueda, GrupoEstado, Puesto, Segmento } from "../types";
+import { GRUPO_COLORS, MOTIVOS_SALIDA } from "../types";
 import {
   API_BASE,
   apiDelete,
@@ -34,11 +35,24 @@ export function ModalSegmentos({
   });
 
   const [empleadoSel, setEmpleadoSel]   = useState<EmpleadoBusqueda | null>(null);
+  const [coverGrupo, setCoverGrupo]     = useState<GrupoEstado | null>(null);
   const [tipoCobertura, setTipo]        = useState("relevo");
   const [horaInicio, setHoraInicio]     = useState("");
   const [horaFin, setHoraFin]           = useState("");
   const [motivo, setMotivo]             = useState("");
   const [guardando, setGuardando]       = useState(false);
+  // Relevo: motivo de salida del titular (descuento de días, igual que sustitución)
+  const [tipoNovedadTitular, setTipoNovedadTitular] = useState("falta_total");
+  // HE del cubriente cuando estaba en descanso: efectivo o planilla
+  const [modoPagoHE, setModoPagoHE]     = useState<"planilla" | "efectivo">("planilla");
+  const [montoEfectivo, setMontoEfectivo] = useState("");
+  const [pagadoPor, setPagadoPor]       = useState("");
+  const [tarifaHE, setTarifaHE]         = useState<{ tarifa: number; horas_turno: number } | null>(null);
+
+  const esRelevo = tipoCobertura === "relevo";
+  // Solo se pregunta efectivo/planilla cuando quien cubre estaba en descanso
+  const aplicaHE = esRelevo && coverGrupo === "descansando";
+  const motivoSeleccionado = MOTIVOS_SALIDA.find((t) => t.value === tipoNovedadTitular);
 
   const fechaDisplay = (() => {
     const [y, m, d] = fecha.split("-");
@@ -107,6 +121,34 @@ export function ModalSegmentos({
   const horaInicioInvalida = horaInicio.length > 0 && !HHMM.test(horaInicio);
   const horaFinInvalida    = horaFin.length > 0    && !HHMM.test(horaFin);
 
+  // Jornada del turno (para tarifa HE): ≥20h ⇒ 24h, si no 12h
+  const jornadaReal = totalMin >= 20 * 60 ? "24h" : "12h";
+
+  // Cargar tarifa HE solo si aplica (cubriente en descanso)
+  useEffect(() => {
+    if (!aplicaHE) return;
+    fetch(`${API_BASE}/nomina/tarifas-he`, { headers: { "x-isp-session": getSession() } })
+      .then((r) => r.json())
+      .then((rows: any[]) => {
+        const found = rows.find((r: any) => r.jornada === jornadaReal) ?? rows[0];
+        if (found) setTarifaHE({ tarifa: parseFloat(found.tarifa), horas_turno: parseInt(found.horas_turno) });
+      })
+      .catch(() => {});
+  }, [jornadaReal, aplicaHE]);
+
+  // Minutos del tramo (para prorratear el costo de HE)
+  const segMin = (HHMM.test(horaInicio) && HHMM.test(horaFin))
+    ? (() => { let d = parseHM(horaFin) - parseHM(horaInicio); if (d <= 0) d += 1440; return d; })()
+    : 0;
+  const costoPorHora = tarifaHE ? tarifaHE.tarifa / tarifaHE.horas_turno : null;
+  const costoHE = costoPorHora != null && segMin > 0
+    ? costoPorHora * (segMin / 60)
+    : (tarifaHE?.tarifa ?? null);
+
+  useEffect(() => {
+    if (aplicaHE && costoHE != null) setMontoEfectivo(costoHE.toFixed(2));
+  }, [costoHE, aplicaHE]);
+
   async function agregarSegmento() {
     if (!empleadoSel) { toast({ title: "Selecciona un empleado", variant: "destructive" }); return; }
     if (!horaInicio || !horaFin) {
@@ -115,6 +157,11 @@ export function ModalSegmentos({
     }
     if (horaInicioInvalida || horaFinInvalida) {
       toast({ title: "Formato de hora inválido — usa HH:MM (ej: 06:00)", variant: "destructive" });
+      return;
+    }
+    const montoNum = Number(montoEfectivo);
+    if (aplicaHE && modoPagoHE === "efectivo" && (!montoEfectivo || isNaN(montoNum) || montoNum <= 0)) {
+      toast({ title: "Ingresa el monto a pagar en efectivo", variant: "destructive" });
       return;
     }
     setGuardando(true);
@@ -133,12 +180,65 @@ export function ModalSegmentos({
           horaInicio: horaInicio || null,
           horaFin:    horaFin    || null,
           motivo:     motivo     || null,
+          // Relevo: motivo de salida del titular (descuento de días)
+          tipoNovedadTitular: esRelevo ? tipoNovedadTitular : null,
+          // HE del cubriente en descanso: cómo se paga (efectivo/planilla)
+          modoPagoHE: aplicaHE ? modoPagoHE : null,
         }),
       });
       if (!res.ok) throw await res.json();
+
+      // Si la HE se paga en efectivo, registrar el pago inmediato (no entra a planilla)
+      if (aplicaHE && modoPagoHE === "efectivo" && montoNum > 0) {
+        try {
+          const r = await fetch(`${API_BASE}/incentivos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-isp-session": getSession() },
+            body: JSON.stringify({
+              employeeId:     empleadoSel.id,
+              employeeNombre: empleadoSel.nombreCompleto,
+              fecha,
+              clienteId:      puesto.cliente_id,
+              clienteNombre:  puesto.cliente_nombre ?? null,
+              sedeId:         puesto.sede_id,
+              puestoId:       puesto.id,
+              puestoNombre:   puesto.nombre,
+              tipo:           "he_efectivo",
+              monto:          montoNum,
+              motivo:         `Pago HE en efectivo — ${puesto.nombre}`,
+              autorizadoPor:  pagadoPor || "sistema",
+              pagadoPor:      pagadoPor || "sistema",
+              metodoPago:     "efectivo",
+              estado:         "pagado",
+            }),
+          });
+          if (r.status === 409) {
+            toast({ title: "Ya registrado", description: "Este pago en efectivo ya fue registrado previamente.", variant: "destructive" });
+          } else if (r.ok) {
+            toast({ title: "HE pagadas en efectivo", description: `Q${montoNum.toFixed(2)} → ${empleadoSel.nombreCompleto}. No entra a planilla.` });
+          } else {
+            const e = await r.json().catch(() => ({}));
+            toast({
+              title: "El pago en efectivo NO quedó registrado",
+              description: `${e?.error ?? "Error al registrar"}. La HE seguirá en planilla — vuelve a intentar el pago en efectivo.`,
+              variant: "destructive",
+            });
+          }
+        } catch {
+          toast({
+            title: "El pago en efectivo NO quedó registrado",
+            description: "No se pudo contactar el servidor. La HE seguirá en planilla — vuelve a intentar el pago en efectivo.",
+            variant: "destructive",
+          });
+        }
+      }
+
       toast({ title: "Tramo registrado correctamente" });
       refetch();
-      setEmpleadoSel(null); setHoraInicio(""); setHoraFin(""); setMotivo("");
+      setEmpleadoSel(null); setCoverGrupo(null);
+      setHoraInicio(""); setHoraFin(""); setMotivo("");
+      setTipoNovedadTitular("falta_total"); setModoPagoHE("planilla");
+      setMontoEfectivo(""); setPagadoPor("");
     } catch (err: any) {
       toast({ title: err?.error ?? "Error al registrar tramo", variant: "destructive" });
     } finally {
@@ -343,7 +443,7 @@ export function ModalSegmentos({
                 <p className="text-xs font-semibold text-indigo-200 truncate">{empleadoSel.nombreCompleto}</p>
                 <p className="text-[10px] text-indigo-300/50">{empleadoSel.puesto ?? "Agente"}</p>
               </div>
-              <button onClick={() => setEmpleadoSel(null)} className="text-white/25 hover:text-red-400 transition-colors">
+              <button onClick={() => { setEmpleadoSel(null); setCoverGrupo(null); }} className="text-white/25 hover:text-red-400 transition-colors">
                 <XCircle className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -353,9 +453,10 @@ export function ModalSegmentos({
               seleccionado={null}
               puestoId={puesto.id}
               zonaId={puesto.zona_operativa_id}
-              onSelect={(a) =>
-                setEmpleadoSel({ id: a.id, nombreCompleto: a.nombre, puesto: a.detalle ?? null, area: null })
-              }
+              onSelect={(a) => {
+                setEmpleadoSel({ id: a.id, nombreCompleto: a.nombre, puesto: a.detalle ?? null, area: null });
+                setCoverGrupo(a.grupo);
+              }}
             />
           )}
 
@@ -419,6 +520,112 @@ export function ModalSegmentos({
               {horaFinInvalida && <p className="text-[9px] text-red-400">Formato HH:MM</p>}
             </div>
           </div>
+
+          {/* ── RELEVO: ¿Por qué falta el titular? (descuento de días) ── */}
+          {esRelevo && (
+            <div className="space-y-1.5 border-t border-white/8 pt-2.5">
+              <div className="flex items-center gap-1.5">
+                <UserMinus className="w-3 h-3 text-red-400/60" />
+                <label className="text-[10px] font-semibold text-white/55">¿Por qué falta el titular?</label>
+                {motivoSeleccionado && (
+                  <span className={`ml-auto text-[8px] px-1.5 py-0.5 rounded border font-semibold ${
+                    motivoSeleccionado.grupo === "descuento"
+                      ? "text-red-300 bg-red-500/10 border-red-500/30"
+                      : "text-emerald-300 bg-emerald-500/10 border-emerald-500/30"
+                  }`}>
+                    {motivoSeleccionado.grupo === "descuento" ? "Con descuento" : "Sin descuento"}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {MOTIVOS_SALIDA.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    data-active={tipoNovedadTitular === t.value ? "" : undefined}
+                    onClick={() => setTipoNovedadTitular(t.value)}
+                    title={t.desc}
+                    className={`px-2 py-1 rounded-md border text-[10px] font-semibold transition-all ${GRUPO_COLORS[t.grupo]} ${
+                      tipoNovedadTitular === t.value ? "opacity-100 scale-[1.03]" : "opacity-60 hover:opacity-90"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              {motivoSeleccionado && (
+                <p className="text-[9px] text-white/40 leading-snug">{motivoSeleccionado.desc}</p>
+              )}
+            </div>
+          )}
+
+          {/* ── RELEVO + DESCANSO: ¿Cómo se pagan las HE? ── */}
+          {aplicaHE && (
+            <div className="space-y-1.5 border-t border-white/8 pt-2.5">
+              <div className="flex items-center gap-1.5">
+                <DollarSign className="w-3 h-3 text-amber-400/60" />
+                <label className="text-[10px] font-semibold text-white/55">¿Cómo se pagan las HE del cubriente?</label>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setModoPagoHE("planilla")}
+                  className={`py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all ${
+                    modoPagoHE === "planilla"
+                      ? "bg-blue-500/15 border-blue-500/40 text-blue-300"
+                      : "border-white/10 text-white/35 hover:text-white/60"
+                  }`}
+                >
+                  En Planilla
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoPagoHE("efectivo")}
+                  className={`py-1.5 px-2 rounded-lg border text-[10px] font-semibold transition-all ${
+                    modoPagoHE === "efectivo"
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                      : "border-white/10 text-white/35 hover:text-white/60"
+                  }`}
+                >
+                  En Efectivo
+                </button>
+              </div>
+              {modoPagoHE === "planilla" && (
+                <p className="text-[9px] text-blue-300/50">Pasa por aprobación RRHH y se incluye en la próxima nómina.</p>
+              )}
+              {modoPagoHE === "efectivo" && (
+                <div className="bg-emerald-500/8 border border-emerald-500/20 rounded-lg p-2.5 space-y-2">
+                  <div>
+                    <label className="block text-[9px] text-white/40 mb-1">Monto a pagar (Q)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.50"
+                      value={montoEfectivo}
+                      onChange={(e) => setMontoEfectivo(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/20 outline-none focus:border-emerald-500/50"
+                    />
+                    {costoPorHora != null && (
+                      <p className="text-[8px] text-white/25 mt-0.5">
+                        Tarifa Q{costoPorHora.toFixed(2)}/h ({jornadaReal}){segMin > 0 ? ` · ${(segMin / 60).toFixed(1)}h` : ""}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[9px] text-white/40 mb-1">Pagado por</label>
+                    <input
+                      type="text"
+                      placeholder="Nombre de quien entrega…"
+                      value={pagadoPor}
+                      onChange={(e) => setPagadoPor(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/20 outline-none focus:border-emerald-500/50"
+                    />
+                  </div>
+                  <p className="text-[9px] text-amber-300/60">Pago inmediato en campo. No aparecerá en planilla.</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <input
             type="text"

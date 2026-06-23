@@ -320,6 +320,7 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
   const {
     fecha, puestoId, clientId, sedeId, employeeId, empleadoNombre,
     tipoCobertura, horaInicio, horaFin, motivo, observaciones, usuarioRegistro,
+    tipoNovedadTitular, modoPagoHE,
   } = req.body;
 
   if (!fecha || !puestoId || !employeeId) {
@@ -343,7 +344,8 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
       `SELECT po.descanso_inicio, po.descanso_fin, po.elegible_horas_extra,
               po.hora_entrada, po.hora_salida, po.titular_employee_id, po.cliente_nombre,
               po.nombre AS puesto_nombre,
-              COALESCE(t.num_titulares, 1) AS num_titulares
+              COALESCE(t.num_titulares, 1) AS num_titulares,
+              t.horas_trabajo::float AS horas_trabajo
        FROM puestos_operativos po
        LEFT JOIN turnos t ON t.id = po.tipo_turno_id
        WHERE po.id = $1`,
@@ -408,6 +410,12 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
     const numTitulares = Number(puesto?.num_titulares ?? 1);
     // Descuento: 2x si 1 titular (12h), 3x si 2 titulares (24h)
     const factorDescuento = numTitulares >= 2 ? 3 : 2;
+    // Horas del turno del puesto (para evento RRHH y días de descuento del titular)
+    const turnoHoras = Number(puesto?.horas_trabajo) > 0
+      ? Number(puesto.horas_trabajo)
+      : (puesto?.hora_entrada && puesto?.hora_salida
+          ? calcularHoras(puesto.hora_entrada, puesto.hora_salida)
+          : (numTitulares >= 2 ? 24 : 12));
 
     try {
       if (segTipo === "ausencia_sin_cubrir") {
@@ -473,6 +481,146 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
              AND fecha_evento = $4`,
           [employeeId ?? null, empleadoNombre ?? null, puestoId, fecha]
         );
+
+        // ── RELEVO POR FALTA DEL TITULAR: evento + novedad de falta del titular ──
+        // Igual que el flujo normal de sustitución: si el titular faltó, generar su
+        // evento RRHH y su novedad de nómina (con descuento según el motivo).
+        const titularId = puesto?.titular_employee_id ?? null;
+        if (segTipo === "relevo" && tipoNovedadTitular && titularId && Number(titularId) !== Number(employeeId)) {
+          try {
+            // Mapeo motivo (front) → tipo_evento RRHH (mirror asignacion.ts)
+            const tiposRrhhTitular: Record<string, string> = {
+              falta_total:      "falta",
+              abandono_parcial: "abandono_parcial",
+              suspension_disc:  "suspension_disciplinaria",
+              suspension:       "suspension_disciplinaria",
+              incapacidad:      "incapacidad",
+              permiso_sin_goce: "permiso_sin_goce",
+              permiso_con_goce: "permiso_con_goce",
+            };
+            const tipoEventoRrhh = tiposRrhhTitular[tipoNovedadTitular] ?? null;
+            if (tipoEventoRrhh) {
+              const TIPOS_SIN_DESCUENTO = ["vacaciones", "relevo_vacaciones", "incapacidad", "permiso_con_goce", "permiso", "descanso"];
+              const sinDescuento = TIPOS_SIN_DESCUENTO.includes(tipoNovedadTitular);
+              const esSuspension = ["suspension", "suspension_disciplinaria"].includes(tipoEventoRrhh);
+              const esFalta      = !sinDescuento && !esSuspension;
+              const diasDesc     = esFalta ? (turnoHoras >= 24 ? 3 : turnoHoras >= 12 ? 2 : 1) : null;
+
+              // Datos del titular
+              let titularNombre = "Titular";
+              let titularDpi: string | null = null;
+              const { rows: tRows } = await pool.query(
+                `SELECT nombre_completo, dpi FROM employees WHERE id = $1`, [titularId]
+              );
+              if (tRows.length) {
+                titularNombre = tRows[0].nombre_completo ?? "Titular";
+                titularDpi    = tRows[0].dpi ?? null;
+              }
+
+              // Evento RRHH del titular — idempotente: solo uno por titular+fecha desde tramos
+              let eventoTitularId: number | null = null;
+              const { rows: evDup } = await pool.query(
+                `SELECT id FROM eventos_rrhh
+                 WHERE employee_id = $1 AND fecha::date = $2::date
+                   AND tipo_evento = $3 AND generado_desde = 'cobertura_tramos'
+                 LIMIT 1`,
+                [titularId, fecha, tipoEventoRrhh]
+              );
+              if (evDup.length) {
+                eventoTitularId = evDup[0].id;
+              } else {
+                const { rows: evNew } = await pool.query(
+                  `INSERT INTO eventos_rrhh
+                     (employee_id, employee_nombre, employee_dpi,
+                      tipo_evento, fecha, cliente_nombre, puesto_nombre,
+                      generado_desde, estado, usuario_generador, documentos_generados,
+                      cantidad_horas)
+                   VALUES ($1,$2,$3,$4,$9::date,$5,$6,'cobertura_tramos','pendiente_aprobacion',$7,'[]',$8)
+                   RETURNING id`,
+                  [titularId, titularNombre, titularDpi, tipoEventoRrhh,
+                   puesto?.cliente_nombre ?? null, puesto?.puesto_nombre ?? null,
+                   usuarioRegistro ?? "sistema", turnoHoras, fecha]
+                );
+                eventoTitularId = evNew[0]?.id ?? null;
+              }
+
+              // Novedad de nómina del titular (descuento de días) — mirror asignacion.ts
+              await pool.query(
+                `INSERT INTO novedades_nomina_diarias
+                   (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+                    falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+                    puesto_titular_id, puesto_titular_nombre,
+                    tipo_novedad, fuente, evento_rrhh_id, dias_descuento,
+                    requiere_revision_rrhh, impacto_nomina, updated_at)
+                 VALUES ($1,$2,$3, FALSE, 0, 0,
+                         $4, $5, FALSE, $6, $7,
+                         $8, $9,
+                         $10, 'cobertura_tramos', $11, $12,
+                         TRUE, 'pendiente', NOW())
+                 ON CONFLICT (fecha, employee_id) DO UPDATE SET
+                   trabajo_dia      = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.trabajo_dia ELSE FALSE END,
+                   horas_trabajadas = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.horas_trabajadas ELSE 0 END,
+                   horas_extra      = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.horas_extra ELSE 0 END,
+                   falta            = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.falta ELSE $4 END,
+                   suspension       = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.suspension ELSE $5 END,
+                   afecta_septimo   = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.afecta_septimo ELSE $6 END,
+                   descuento_dia    = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.descuento_dia ELSE $7 END,
+                   tipo_novedad     = COALESCE(novedades_nomina_diarias.tipo_novedad, $10),
+                   fuente           = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.fuente ELSE 'cobertura_tramos' END,
+                   evento_rrhh_id   = COALESCE(novedades_nomina_diarias.evento_rrhh_id, $11),
+                   dias_descuento   = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.dias_descuento ELSE $12 END,
+                   requiere_revision_rrhh = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.requiere_revision_rrhh ELSE TRUE END,
+                   impacto_nomina   = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh') THEN novedades_nomina_diarias.impacto_nomina ELSE 'pendiente' END,
+                   updated_at       = NOW()`,
+                [fecha, titularId, titularNombre,
+                 esFalta, esSuspension, esFalta, esFalta,
+                 (Number(puesto?.titular_employee_id) === Number(titularId) ? puestoId : null),
+                 (Number(puesto?.titular_employee_id) === Number(titularId) ? puesto?.puesto_nombre : null),
+                 tipoNovedadTitular, eventoTitularId, diasDesc]
+              );
+              logger.info({ titularId, fecha, tipoNovedadTitular, diasDesc, esFalta, esSuspension },
+                "POST /cobertura/segmentos — novedad de falta del titular generada (relevo tramos)");
+            }
+          } catch (titErr) {
+            logger.warn({ titErr }, "POST /cobertura/segmentos — novedad del titular falló (no bloqueante)");
+          }
+        }
+
+        // ── PAGO HE DEL CUBRIENTE: asegurar fila de novedad cuando se decidió modo ──
+        // Solo cuando el front envía modoPagoHE (cubriente en descanso). Garantiza que
+        // exista la novedad con impacto_nomina='pendiente' para que:
+        //  - efectivo: POST /api/incentivos la voltee a 'pagado_efectivo' (el cierre la preserva)
+        //  - planilla: pase por revisión RRHH y se pague en nómina sin doble pago.
+        if ((modoPagoHE === "efectivo" || modoPagoHE === "planilla") && employeeId) {
+          const heCubriente = generaHorasExtra
+            ? (horasExtraCalculadas ?? horasCalculadas ?? 0)
+            : (horasCalculadas ?? 0);
+          await pool.query(
+            `INSERT INTO novedades_nomina_diarias
+               (fecha, employee_id, empleado_nombre, trabajo_dia, horas_trabajadas, horas_extra,
+                falta, suspension, descanso_trabajado, afecta_septimo, descuento_dia,
+                puesto_cubierto_id, puesto_cubierto_nombre, num_puestos_cubiertos,
+                tipo_novedad, fuente, horas_extra_estado, requiere_revision_rrhh, impacto_nomina, updated_at)
+             VALUES ($1,$2,$3, TRUE, $4, $5,
+                     FALSE, FALSE, TRUE, FALSE, FALSE,
+                     $6, $7, 1,
+                     'relevo', 'cobertura_tramos', 'pendiente', TRUE, 'pendiente', NOW())
+             ON CONFLICT (fecha, employee_id) DO UPDATE SET
+               trabajo_dia        = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh','pagado_efectivo') THEN novedades_nomina_diarias.trabajo_dia ELSE TRUE END,
+               horas_extra        = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh','pagado_efectivo') THEN novedades_nomina_diarias.horas_extra ELSE GREATEST(novedades_nomina_diarias.horas_extra, EXCLUDED.horas_extra) END,
+               horas_extra_estado = CASE WHEN COALESCE(novedades_nomina_diarias.horas_extra_estado,'') IN ('aprobado','rechazado','pagado_efectivo') THEN novedades_nomina_diarias.horas_extra_estado ELSE 'pendiente' END,
+               descanso_trabajado = TRUE,
+               puesto_cubierto_id     = COALESCE(novedades_nomina_diarias.puesto_cubierto_id, EXCLUDED.puesto_cubierto_id),
+               puesto_cubierto_nombre = COALESCE(novedades_nomina_diarias.puesto_cubierto_nombre, EXCLUDED.puesto_cubierto_nombre),
+               requiere_revision_rrhh = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh','pagado_efectivo') THEN novedades_nomina_diarias.requiere_revision_rrhh ELSE TRUE END,
+               impacto_nomina     = CASE WHEN novedades_nomina_diarias.impacto_nomina IN ('aprobado_rrhh','rechazado_rrhh','pagado_efectivo') THEN novedades_nomina_diarias.impacto_nomina ELSE 'pendiente' END,
+               updated_at         = NOW()`,
+            [fecha, employeeId, empleadoNombre ?? null,
+             Number(horasCalculadas ?? 0).toFixed(2),
+             Number(heCubriente).toFixed(2),
+             puestoId ?? null, puesto?.puesto_nombre ?? null]
+          );
+        }
 
         // Si generó horas extra → alerta RRHH para aprobación
         if (generaHorasExtra && employeeId) {
