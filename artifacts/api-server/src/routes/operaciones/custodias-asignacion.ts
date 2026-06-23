@@ -242,12 +242,14 @@ router.post("/operaciones/quitar-titularidad-custodia", async (req, res) => {
     return res.status(403).json({ error: "Solo Operaciones o administradores pueden quitar la titularidad" });
   }
 
-  const { clienteId, slotNumero, employeeId, motivo, usuario } = req.body as {
-    clienteId: number; slotNumero: number; employeeId: number; motivo?: string; usuario?: string;
+  const { clienteId, slotNumero, employeeId, motivo, usuario, fecha } = req.body as {
+    clienteId: number; slotNumero: number; employeeId: number; motivo?: string; usuario?: string; fecha?: string;
   };
   if (!clienteId || !slotNumero || !employeeId) {
     return res.status(400).json({ error: "clienteId, slotNumero y employeeId son requeridos" });
   }
+  // Fecha vista en el pizarrón (puede ser un día pasado reabierto); si no llega, hoy.
+  const fechaObjetivo = fecha || todayGT();
 
   const client = await pool.connect();
   try {
@@ -259,9 +261,20 @@ router.post("/operaciones/quitar-titularidad-custodia", async (req, res) => {
         WHERE cliente_id = $1 AND slot_numero = $2 AND employee_id = $3 AND activo = TRUE`,
       [clienteId, slotNumero, employeeId]
     );
-    if (ctRows.length === 0) {
+    const esTitular = ctRows.length > 0;
+
+    const { rows: cadRows } = await client.query(
+      `SELECT id FROM custodia_asignacion_diaria
+        WHERE cliente_id = $1 AND slot_numero = $2 AND fecha = $3::date AND employee_id = $4`,
+      [clienteId, slotNumero, fechaObjetivo, employeeId]
+    );
+    const tieneAsignacionDia = cadRows.length > 0;
+
+    // Puede no ser titular pero sí tener una asignación diaria (cobertura o error). Si no es
+    // ninguna de las dos cosas, no hay nada que quitar para esa fecha.
+    if (!esTitular && !tieneAsignacionDia) {
       await client.query("ROLLBACK");
-      return res.status(409).json({ error: "El colaborador no es titular activo de este slot de custodia" });
+      return res.status(409).json({ error: "El colaborador no está asignado a este slot de custodia en la fecha seleccionada" });
     }
 
     const { rows: empRows } = await client.query(
@@ -269,40 +282,49 @@ router.post("/operaciones/quitar-titularidad-custodia", async (req, res) => {
     );
     const empNombre = empRows[0]?.nombre_completo ?? "";
 
-    // 1) Desactivar titularidad
-    await client.query(
-      `UPDATE custodia_titulares SET activo = FALSE
-        WHERE cliente_id = $1 AND slot_numero = $2 AND employee_id = $3`,
-      [clienteId, slotNumero, employeeId]
-    );
+    // 1) Desactivar titularidad permanente, solo si la tenía
+    if (esTitular) {
+      await client.query(
+        `UPDATE custodia_titulares SET activo = FALSE
+          WHERE cliente_id = $1 AND slot_numero = $2 AND employee_id = $3`,
+        [clienteId, slotNumero, employeeId]
+      );
+    }
 
-    // 2) Borrar asignación diaria de hoy si era de ese empleado
-    const fechaHoy = todayGT();
+    // 2) Borrar la asignación diaria de la FECHA VISTA (no solo la de hoy)
     await client.query(
       `DELETE FROM custodia_asignacion_diaria
         WHERE cliente_id = $1 AND slot_numero = $2 AND fecha = $3::date AND employee_id = $4`,
-      [clienteId, slotNumero, fechaHoy, employeeId]
+      [clienteId, slotNumero, fechaObjetivo, employeeId]
     );
 
-    // 3) Devolver al pool: EOA → disponible
-    await client.query(
-      `UPDATE employee_operational_assignments
-          SET activa = FALSE, updated_at = NOW()
-        WHERE employee_id = $1 AND activa = TRUE`,
-      [employeeId]
-    );
-    await client.query(
-      `INSERT INTO employee_operational_assignments
-         (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
-          tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
-       VALUES ($1, NULL, NULL, NULL, NULL, NULL, 'disponible', TRUE, NOW(),
-               'Quitado de titularidad de custodia desde pizarrón', NOW(), NOW())`,
-      [employeeId]
-    );
+    // 3) Devolver al pool (EOA → disponible) SOLO si se quitó titularidad permanente.
+    //    Para una corrección de un día puntual no se debe alterar su estado operativo actual.
+    if (esTitular) {
+      await client.query(
+        `UPDATE employee_operational_assignments
+            SET activa = FALSE, updated_at = NOW()
+          WHERE employee_id = $1 AND activa = TRUE`,
+        [employeeId]
+      );
+      await client.query(
+        `INSERT INTO employee_operational_assignments
+           (employee_id, puesto_id, sede_id, cliente_id, zona_operativa_id, tipo_turno_id,
+            tipo_asignacion, activa, fecha_inicio, notas, created_at, updated_at)
+         VALUES ($1, NULL, NULL, NULL, NULL, NULL, 'disponible', TRUE, NOW(),
+                 'Quitado de titularidad de custodia desde pizarrón', NOW(), NOW())`,
+        [employeeId]
+      );
+    }
 
     await client.query("COMMIT");
-    logger.info({ clienteId, slotNumero, employeeId, usuario, motivo }, "Titularidad custodia removida");
-    return res.json({ ok: true, mensaje: `${empNombre} ya no es titular del Custodio ${slotNumero}` });
+    logger.info({ clienteId, slotNumero, employeeId, usuario, motivo, fecha: fechaObjetivo, esTitular }, "Custodia: agente removido del slot");
+    return res.json({
+      ok: true,
+      mensaje: esTitular
+        ? `${empNombre} ya no es titular del Custodio ${slotNumero}`
+        : `${empNombre} fue removido del Custodio ${slotNumero}`,
+    });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     logger.error({ err }, "POST /operaciones/quitar-titularidad-custodia error");

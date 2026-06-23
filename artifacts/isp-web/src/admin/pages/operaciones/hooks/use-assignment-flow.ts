@@ -528,6 +528,7 @@ export function useAssignmentFlow({
           clienteId,
           slotNumero,
           employeeId: modalQuitarTitular.employeeId,
+          fecha: fechaVista || undefined,
           motivo,
           usuario: currentUser?.nombre ?? currentUser?.username ?? "sistema",
         });
