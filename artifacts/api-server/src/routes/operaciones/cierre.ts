@@ -613,6 +613,22 @@ router.post("/operaciones/cierre", async (req, res) => {
         LEFT JOIN turnos t ON t.id = po.tipo_turno_id
         WHERE po.estado_operativo_puesto = 'faltando'
           AND po.falta_employee_id IS NOT NULL
+          -- Excluir PUESTOS POR SLOTS (modelo 24x24/turnos). La bandera legacy
+          -- 'faltando' de puestos_operativos no tiene fecha: una vez puesta se queda
+          -- "pegada" y este cierre regenera una falta del titular en CADA día que se
+          -- cierre (incluidos sus días de descanso del ciclo), aunque el titular esté
+          -- trabajando normalmente. En el modelo por slots la inasistencia se registra
+          -- de forma FECHADA vía cobertura/relevo (eventos propios), no por esta
+          -- bandera. Se excluye cualquier puesto con un slot activo asignado (no solo
+          -- cuando coincide el empleado) para cubrir también datos viejos donde
+          -- falta_employee_id ya no es el ocupante actual del slot. Los puestos simples
+          -- (sin slots) conservan el comportamiento legacy (falta diaria por ausencia).
+          AND NOT EXISTS (
+            SELECT 1 FROM puesto_slots ps
+            WHERE ps.puesto_id   = po.id
+              AND ps.activo      = TRUE
+              AND ps.empleado_id IS NOT NULL
+          )
       `);
 
       for (const pf of puestosFaltando) {
