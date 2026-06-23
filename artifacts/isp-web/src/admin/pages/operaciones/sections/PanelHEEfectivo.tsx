@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, AlertCircle, Trash2, Banknote } from "lucide-react";
+import { Loader2, AlertCircle, Trash2, Banknote, Search, X } from "lucide-react";
 import { API_BASE } from "../utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -34,6 +34,7 @@ export function PanelHEEfectivo() {
   const hoyIso = hoy.toISOString().slice(0, 10);
   const [desde, setDesde] = useState(primerDiaMes);
   const [hasta, setHasta] = useState(hoyIso);
+  const [busqueda, setBusqueda] = useState("");
   const [rows, setRows] = useState<FilaHE[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,8 +62,14 @@ export function PanelHEEfectivo() {
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  const totalHoras = rows.reduce((s, r) => s + (Number(r.horas_extra) || 0), 0);
-  const totalMonto = rows.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+  const q = busqueda.trim().toLowerCase();
+  const filtradas = q
+    ? rows.filter((r) =>
+        [r.empleado_nombre, r.puesto_nombre, r.cliente_nombre]
+          .some((v) => (v ?? "").toLowerCase().includes(q)))
+    : rows;
+  const totalHoras = filtradas.reduce((s, r) => s + (Number(r.horas_extra) || 0), 0);
+  const totalMonto = filtradas.reduce((s, r) => s + (Number(r.monto) || 0), 0);
   const puestoCliente = (r: FilaHE) => {
     const puesto = r.puesto_nombre || "—";
     return r.cliente_nombre ? `${puesto} — ${r.cliente_nombre}` : puesto;
@@ -107,12 +114,30 @@ export function PanelHEEfectivo() {
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
             className="bg-white/4 border border-white/8 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary/40" />
         </div>
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-[10px] text-white/40 mb-1">Buscar colaborador</label>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-white/30 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Nombre, puesto o cliente..."
+              className="w-full bg-white/4 border border-white/8 rounded-lg pl-8 pr-8 py-1.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-primary/40" />
+            {busqueda && (
+              <button type="button" onClick={() => setBusqueda("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
           <p className="text-[10px] text-white/40 uppercase tracking-wider">Registros</p>
-          <p className="text-2xl font-bold text-white">{rows.length}</p>
+          <p className="text-2xl font-bold text-white">{filtradas.length}</p>
         </div>
         <div className="bg-[#0c1829] border border-white/5 rounded-xl p-4">
           <p className="text-[10px] text-white/40 uppercase tracking-wider">Total pagado</p>
@@ -137,9 +162,11 @@ export function PanelHEEfectivo() {
         </div>
       )}
       {!loading && !error && (
-        rows.length === 0 ? (
+        filtradas.length === 0 ? (
           <div className="text-center py-16 text-white/30 text-sm">
-            No hay horas extra pagadas en efectivo en este período.
+            {rows.length === 0
+              ? "No hay horas extra pagadas en efectivo en este período."
+              : `No hay coincidencias para "${busqueda.trim()}" en este período.`}
           </div>
         ) : (
           <div className="bg-[#0c1829] border border-white/5 rounded-xl overflow-x-auto">
@@ -158,7 +185,7 @@ export function PanelHEEfectivo() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {filtradas.map((r) => (
                   <tr key={r.id} className="border-b border-white/4 hover:bg-white/3">
                     <td className="px-3 py-2 text-white/70 whitespace-nowrap">{fmtFecha(r.fecha)}</td>
                     <td className="px-3 py-2 text-white/90 font-medium">{r.empleado_nombre ?? "—"}</td>
