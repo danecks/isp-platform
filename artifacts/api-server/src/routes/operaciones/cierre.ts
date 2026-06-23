@@ -17,6 +17,41 @@ const router = Router();
 // las filas previas son de pruebas). Si la fecha cambia, ajustar aquí.
 const FECHA_INICIO_OPERACION = "2026-06-01";
 
+// Cuenta la cobertura de puestos desde el modelo de turnos (puesto_slots), igual
+// que el pizarrón en vivo. Un puesto está cubierto si tiene un slot con empleado
+// asignado (o, como fallback legacy, agente_id). El relevo del día se deriva de
+// cobertura_segmentos. La columna vieja puestos_operativos.estado quedó obsoleta
+// al pasar al modelo 24x24 y reportaba casi todo "descubierto" erróneamente.
+async function contarCoberturaPuestos(fechaISO: string) {
+  const { rows: c } = await pool.query(`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE
+        EXISTS (SELECT 1 FROM puesto_slots ps
+                WHERE ps.puesto_id = po.id AND ps.activo = TRUE AND ps.empleado_id IS NOT NULL)
+        OR po.agente_id IS NOT NULL
+      )::int AS cubiertos
+    FROM puestos_operativos po WHERE po.activo = TRUE
+  `);
+  const { rows: r } = await pool.query(`
+    SELECT COUNT(DISTINCT cs.puesto_id)::int AS relevos
+    FROM cobertura_segmentos cs
+    JOIN puestos_operativos po ON po.id = cs.puesto_id AND po.activo = TRUE
+    WHERE cs.fecha = $1 AND cs.tipo_cobertura = 'relevo'
+  `, [fechaISO]);
+
+  const totalPuestos       = c[0]?.total ?? 0;
+  const cubiertos          = c[0]?.cubiertos ?? 0;
+  const cubiertosPorRelevo = r[0]?.relevos ?? 0;
+  return {
+    totalPuestos,
+    cubiertos,
+    descubiertos: totalPuestos - cubiertos,
+    cubiertosPorRelevo,
+    cubiertosPorTitular: Math.max(0, cubiertos - cubiertosPorRelevo),
+  };
+}
+
 router.get("/operaciones/cierre-hoy", async (req, res) => {
   try {
     const { fechaActivaISO, fechaActivaStr, esFechaFutura, cierreDeHoy } = await calcFechaActiva();
@@ -28,16 +63,9 @@ router.get("/operaciones/cierre-hoy", async (req, res) => {
     );
     const cierreActiva = cierreActivaRows[0] ?? null;
 
-    const { rows: puestos } = await pool.query(`
-      SELECT id, nombre, cliente_nombre, estado, agente_id, titular_employee_id
-      FROM puestos_operativos WHERE activo = TRUE
-    `);
-
-    const totalPuestos        = puestos.length;
-    const cubiertos           = puestos.filter((p: any) => p.estado === 'cubierto').length;
-    const descubiertos        = totalPuestos - cubiertos;
-    const cubiertosPorTitular = puestos.filter((p: any) => p.agente_id && p.agente_id === p.titular_employee_id).length;
-    const cubiertosPorRelevo  = puestos.filter((p: any) => p.agente_id && p.agente_id !== p.titular_employee_id).length;
+    const {
+      totalPuestos, cubiertos, descubiertos, cubiertosPorTitular, cubiertosPorRelevo,
+    } = await contarCoberturaPuestos(fechaActivaISO);
 
     const { rows: movHoy } = await pool.query(`
       SELECT tipo, motivo, COUNT(*) AS cantidad
@@ -57,18 +85,6 @@ router.get("/operaciones/cierre-hoy", async (req, res) => {
     `, [fechaActivaISO]);
     const relevossinMotivo = parseInt(relevosRows[0]?.cantidad ?? '0');
 
-    // Puestos cubiertos sin tramos registrados en cobertura_segmentos
-    const { rows: sinSegmentos } = await pool.query(`
-      SELECT COUNT(*)::int AS cantidad
-      FROM puestos_operativos po
-      WHERE po.activo = TRUE AND po.estado = 'cubierto'
-        AND NOT EXISTS (
-          SELECT 1 FROM cobertura_segmentos cs
-          WHERE cs.puesto_id = po.id
-            AND cs.fecha = $1
-        )
-    `, [fechaActivaISO]);
-    const puestosSinTramos = sinSegmentos[0]?.cantidad ?? 0;
 
     let totalCustodiaSlots = 0;
     let custodiaCubiertos = 0;
@@ -117,7 +133,6 @@ router.get("/operaciones/cierre-hoy", async (req, res) => {
     if (descubiertos > 0)     advertencias.push(`${descubiertos} puesto${descubiertos !== 1 ? 's' : ''} descubierto${descubiertos !== 1 ? 's' : ''}`);
     if (custodiaDescubiertos > 0) advertencias.push(`${custodiaDescubiertos} slot${custodiaDescubiertos !== 1 ? 's' : ''} de custodia descubierto${custodiaDescubiertos !== 1 ? 's' : ''}`);
     if (relevossinMotivo > 0) advertencias.push(`${relevossinMotivo} relevo${relevossinMotivo !== 1 ? 's' : ''} sin motivo registrado`);
-    if (puestosSinTramos > 0) advertencias.push(`${puestosSinTramos} puesto${puestosSinTramos !== 1 ? 's' : ''} cubierto${puestosSinTramos !== 1 ? 's' : ''} sin tramos de cobertura registrados`);
 
     // Días pasados sin cierre: todos los días desde el primer cierre registrado
     // hasta ayer que NO están marcados como 'cerrado'.
@@ -426,11 +441,15 @@ router.post("/operaciones/cierre", async (req, res) => {
       snapshotPuestos = puestoSnap;
     }
 
-    const totalPuestos        = snapshotPuestos.length;
-    const cubiertos           = snapshotPuestos.filter((p: any) => p.estado === 'cubierto').length;
-    const descubiertos        = totalPuestos - cubiertos;
-    const cubiertosPorTitular = snapshotPuestos.filter((p: any) => p.agente_id && p.agente_id === p.titular_employee_id).length;
-    const cubiertosPorRelevo  = snapshotPuestos.filter((p: any) => p.agente_id && p.agente_id !== p.titular_employee_id).length;
+    // Conteos del resumen: contar la cobertura desde el modelo de turnos
+    // (puesto_slots), igual que el pizarrón en vivo, también en cierres
+    // retroactivos (el cierre del día activo corre como retroactivo porque la
+    // fecha activa va un día detrás del calendario). El relevo se deriva de
+    // cobertura_segmentos para esa fecha. snapshotPuestos se reconstruye aparte
+    // arriba y alimenta la sincronización de custodias; no se toca.
+    const {
+      totalPuestos, cubiertos, descubiertos, cubiertosPorTitular, cubiertosPorRelevo,
+    } = await contarCoberturaPuestos(fechaACerrarISO);
 
     // ── Snapshot de custodia slots ──────────────────────────────────────────
     let snapshotCustodias: any[] = [];
