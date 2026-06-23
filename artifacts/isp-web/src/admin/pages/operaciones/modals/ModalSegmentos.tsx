@@ -336,7 +336,8 @@ export function ModalSegmentos({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="p-4 space-y-2">
           {isLoading && (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
@@ -431,9 +432,9 @@ export function ModalSegmentos({
               </div>
             </div>
           )}
-        </div>
+          </div>
 
-        <div className="shrink-0 border-t border-white/8 p-4 space-y-3 bg-[#060e1c]">
+          <div className="border-t border-white/8 p-4 space-y-3 bg-[#060e1c]">
           <div className="flex items-center justify-between">
             <p className="text-[10px] font-bold text-white/25 uppercase tracking-widest">Agregar tramo</p>
             {totalDescubMin > 0 && (
@@ -643,8 +644,11 @@ export function ModalSegmentos({
             onChange={(e) => setMotivo(e.target.value)}
             className="w-full bg-[#060e1c] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-white/15 outline-none focus:border-indigo-400/30"
           />
+          </div>
+        </div>
 
-          <div className="flex gap-2 pt-1">
+        <div className="shrink-0 border-t border-white/8 p-4 bg-[#060e1c]">
+          <div className="flex gap-2">
             <button
               onClick={onClose}
               className="flex-1 py-2 rounded-xl border border-white/10 text-xs text-white/40 hover:text-white transition-colors"
