@@ -1,28 +1,39 @@
 ---
-name: Cobertura por tramos con relevo (falta titular + HE efectivo/planilla)
-description: En cobertura por TRAMOS, cuando un tramo es relevo y el titular faltó, generar la falta del titular y preguntar efectivo/planilla solo si el cubriente estaba en descanso.
+name: Cobertura por tramos — falta del titular en relevo
+description: Cómo el POST /cobertura/segmentos genera la falta del titular en un relevo, incluyendo puestos 24h por slots donde el titular legacy es NULL.
 ---
 
-# Cobertura por tramos (POST /cobertura/segmentos + ModalSegmentos) con relevo
+# Falta del titular en cobertura por TRAMOS (relevo)
 
-La cobertura por tramos debe igualar el flujo normal de sustitución cuando un tramo es RELEVO y el titular faltó:
-1. Generar evento RRHH ('pendiente_aprobacion', generado_desde='cobertura_tramos') + novedad del titular con descuento según motivo (mirror de asignacion.ts).
-2. Preguntar efectivo/planilla para la HE del cubriente **solo** cuando el cubriente estaba en descanso (front: `coverGrupo==='descansando'` → `aplicaHE`).
+En `POST /cobertura/segmentos`, rama `relevo`, se genera el evento RRHH + novedad de
+nómina del titular que faltó (descuento por motivo), espejo del flujo de sustitución
+de `asignacion.ts`. La fecha del evento es la del tramo (no NOW()).
 
-## Reglas durables
+## El titular NO siempre está en `po.titular_employee_id`
+En puestos de 24h con 2+ titulares modelados por **`puesto_slots`** (24x24/24x48/etc.),
+`puestos_operativos.titular_employee_id` (legacy) es **NULL**. Si solo lees ese campo,
+la rama de relevo se salta y NUNCA generas la falta del titular.
 
-- **El evento RRHH del titular se inserta con la fecha del TRAMO, no con NOW().**
-  **Why:** el dedupe idempotente busca `employee_id + fecha::date + tipo_evento`. Si se inserta con NOW(), un tramo retroactivo/futuro queda en el día equivocado y el check de idempotencia deja de ser fiable → se puede duplicar el evento o desalinear RRHH.
-  **How to apply:** en cualquier INSERT de eventos_rrhh desde cobertura de tramos pasar `$n::date` con la `fecha` del tramo, nunca `NOW()`.
+**Regla:** cuando `titularId` legacy es null, resolver el titular que **trabaja HOY**
+(= el que faltó) desde `puesto_slots`, replicando la lógica del pizarrón (`tablero.ts`):
+- `cycleDay = ((diasDesdeFechaInicioCiclo % longitud_ciclo) + longitud_ciclo) % longitud_ciclo + 1` (1-based, maneja negativos)
+- trabaja hoy si `dias_trabajo[]` (array 1..longitud_ciclo) incluye `cycleDay`
+- `fecha_inicio_ciclo` = `COALESCE(ps.fecha_inicio_ciclo, po.fecha_inicio_ciclo)`, `longitud_ciclo` default 14
+- excluir al cubriente (`employeeId`); tomar el **primer** slot activo con `empleado_id` que trabaja hoy
 
-- **Descuento de días del titular:** falta real (no sin_descuento, no suspensión) ⇒ diasDesc por jornada (24h→3, 12h→2, otro→1). La novedad usa ON CONFLICT (fecha, employee_id) y preserva valores si la fila ya está 'aprobado_rrhh'/'rechazado_rrhh'.
+**Por qué replicar y no usar `calcularEstadoCiclo`:** los slots guardan un patrón explícito
+por día (`dias_trabajo INTEGER[]`), no un `tipo_ciclo`. `calcularEstadoCiclo` daría el día
+equivocado para estos puestos. La fuente de verdad es `calcTrabajaPorSlot` (idéntica en
+`tablero.ts` y `cobertura.ts`).
 
-- **HE en efectivo en tramos = dos requests no atómicas.** El front hace POST /cobertura/segmentos (deja la novedad del cubriente en impacto='pendiente') y luego POST /incentivos (he_efectivo) que la voltea a 'pagado_efectivo'.
-  **Why:** si /incentivos falla y se silencia, la HE queda en planilla aunque el operador pagó/quería pagar en efectivo → riesgo de doble pago (cash + planilla).
-  **How to apply:** tratar todo fallo no-409 de /incentivos como toast destructivo visible ("NO quedó registrado, sigue en planilla, reintenta"); 409 = ya registrado (dedupe por employee+fecha+puesto).
+## Atribución del puesto en la novedad
+Como el titular resuelto (legacy o por slot) **siempre** pertenece a este puesto, la novedad
+fija `puesto_titular_id = puestoId` y `puesto_titular_nombre` directo. (Antes se condicionaba
+a `legacy === titularId`, que para slots es null → quedaba sin puesto.)
 
-- El cierre (generar-novedades.ts Paso 4) preserva dias_descuento del titular (solo rellena si null/0) y no revierte 'pagado_efectivo' del cubriente.
-
-- **La jornada del puesto en el modal de tramos se deriva de `horas_trabajo` (turnos.n), no de hora_entrada/hora_salida.**
-  **Why:** un puesto de 24h (turno alternado, 2 titulares) puede tener guardadas solo las horas de un tramo (ej. 06:00–18:00 = 12h). Si el modal calcula el turno desde esas horas, muestra "12H" y aplica tarifa HE de 12h a un puesto de 24h.
-  **How to apply:** en ModalSegmentos usar `puesto.horas_trabajo` (lo provee tablero.ts) para totalMin/jornadaReal; hora_entrada solo fija el inicio. turnoBounds(entrada,salida) es fallback cuando horas_trabajo es null.
+## Decisiones firmes del flujo
+- El relevo pide **motivo** (default `falta_total`); efectivo/planilla solo si el cubriente
+  estaba `descansando`.
+- Idempotente: evento RRHH único por titular+fecha+tipo con `generado_desde='cobertura_tramos'`;
+  novedad con ON CONFLICT (fecha, employee_id) que respeta `aprobado_rrhh/rechazado_rrhh`.
+- La resolución por slot va en try/catch **no bloqueante** (warn): si falla, no rompe el tramo.

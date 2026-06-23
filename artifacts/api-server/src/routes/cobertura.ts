@@ -5,6 +5,25 @@ import { validarEmpleadoAsignable } from "../lib/empleado-fecha-ingreso";
 
 const coberturaRouter = Router();
 
+// Resuelve si un titular trabaja en una fecha usando su puesto_slot.dias_trabajo.
+// cycleDay = (diasDesdeInicio % longitud_ciclo) + 1  (1..longitud_ciclo).
+// Réplica de la lógica del pizarrón (tablero.ts) para puestos 24h multi-titular.
+function calcTrabajaPorSlot(
+  diasTrabajo: number[],
+  fechaInicioStr: string,
+  fechaConsulta: string,
+  longitudCiclo = 14,
+): boolean {
+  const lc = (longitudCiclo && longitudCiclo > 0) ? longitudCiclo : 14;
+  const [iy, im, id] = fechaInicioStr.split("-").map(Number);
+  const [cy, cm, cd] = fechaConsulta.split("-").map(Number);
+  const inicio   = Date.UTC(iy, im - 1, id);
+  const consulta = Date.UTC(cy, cm - 1, cd);
+  const daysElapsed = Math.floor((consulta - inicio) / 86400000);
+  const cycleDay = ((daysElapsed % lc) + lc) % lc + 1; // 1-based, maneja offsets negativos
+  return diasTrabajo.includes(cycleDay);
+}
+
 // ─── GET /api/cobertura/diaria ────────────────────────────────────────────────
 // Cobertura del día (o fecha específica), opcionalmente filtrada por cliente
 coberturaRouter.get("/cobertura/diaria", async (req, res) => {
@@ -485,7 +504,37 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
         // ── RELEVO POR FALTA DEL TITULAR: evento + novedad de falta del titular ──
         // Igual que el flujo normal de sustitución: si el titular faltó, generar su
         // evento RRHH y su novedad de nómina (con descuento según el motivo).
-        const titularId = puesto?.titular_employee_id ?? null;
+        let titularId = puesto?.titular_employee_id ?? null;
+
+        // Puestos 24h con 2+ titulares por SLOTS: titular_employee_id (legacy) es NULL.
+        // Resolver el titular que trabaja HOY (el que faltó) desde puesto_slots por ciclo,
+        // igual que el pizarrón. Se excluye al cubriente y se toma el primero que trabaja.
+        if (!titularId && segTipo === "relevo" && tipoNovedadTitular) {
+          try {
+            const { rows: slotRows } = await pool.query(
+              `SELECT ps.empleado_id, ps.dias_trabajo,
+                      COALESCE(ps.longitud_ciclo, 14)::int AS longitud_ciclo,
+                      COALESCE(ps.fecha_inicio_ciclo, po.fecha_inicio_ciclo)::text AS fecha_inicio_ciclo
+               FROM puesto_slots ps
+               JOIN puestos_operativos po ON po.id = ps.puesto_id
+               WHERE ps.puesto_id = $1 AND ps.activo = TRUE AND ps.empleado_id IS NOT NULL
+               ORDER BY ps.slot_numero`,
+              [puestoId]
+            );
+            for (const s of slotRows) {
+              if (!s.empleado_id || Number(s.empleado_id) === Number(employeeId)) continue;
+              const dias: number[] = Array.isArray(s.dias_trabajo) ? s.dias_trabajo : [];
+              if (!dias.length || !s.fecha_inicio_ciclo) continue;
+              if (calcTrabajaPorSlot(dias, String(s.fecha_inicio_ciclo).slice(0, 10), fecha, s.longitud_ciclo)) {
+                titularId = s.empleado_id;
+                break;
+              }
+            }
+          } catch (slotErr) {
+            logger.warn({ slotErr }, "POST /cobertura/segmentos — resolución de titular por slot falló (no bloqueante)");
+          }
+        }
+
         if (segTipo === "relevo" && tipoNovedadTitular && titularId && Number(titularId) !== Number(employeeId)) {
           try {
             // Mapeo motivo (front) → tipo_evento RRHH (mirror asignacion.ts)
@@ -574,8 +623,8 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
                    updated_at       = NOW()`,
                 [fecha, titularId, titularNombre,
                  esFalta, esSuspension, esFalta, esFalta,
-                 (Number(puesto?.titular_employee_id) === Number(titularId) ? puestoId : null),
-                 (Number(puesto?.titular_employee_id) === Number(titularId) ? puesto?.puesto_nombre : null),
+                 puestoId,
+                 puesto?.puesto_nombre ?? null,
                  tipoNovedadTitular, eventoTitularId, diasDesc]
               );
               logger.info({ titularId, fecha, tipoNovedadTitular, diasDesc, esFalta, esSuspension },
