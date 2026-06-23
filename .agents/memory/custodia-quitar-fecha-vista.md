@@ -20,10 +20,17 @@ asignación diaria (cobertura o asignación errónea).
 **Why:** El bug original exigía titular activo (si no, 409 y no hacía nada) y borraba la
 asignación diaria de `todayGT()` en vez de la fecha vista. Por eso un agente con solo una
 asignación diaria en un día pasado reabierto seguía apareciendo aunque se diera "Quitar".
-Cuando el slot no tiene titular real, el tablero pone a la persona mostrada como
-`titular_employee_id`, así que el frontend pasa ese id (= el agente del día) al endpoint.
+Cuando el slot no tiene titular real, el tablero deja `titular_employee_id = null` y la persona
+mostrada queda solo en `agente_id`; por eso el frontend debe pasar `agente_id` al endpoint.
 
 **How to apply:** El endpoint `quitar-titularidad-custodia` y el frontend
 `confirmarQuitarTitular` deben enviar/usar `fecha = fechaVista` (mismo patrón que
 `asignar-custodia`: `fecha || todayGT()` con `$N::date`). Mismo concepto vale para custodias
 en cualquier corrección sobre día pasado: operar por fecha vista, no por hoy.
+
+**Visibilidad del botón (clave):** el tablero arma el slot de custodia con
+`titular_employee_id = titular?.employee_id ?? null`, así que cuando NO hay titular activo
+(solo una asignación diaria) ese campo es null. Si el botón "Quitar" en `CustodiaSlotItem`
+se condiciona solo a `tieneTitular`, NUNCA aparece para una asignación diaria suelta (el caso
+del error). El botón debe mostrarse cuando hay titular fijo O un empleado real cubriendo
+(`agente_id`, no externo), y pasar `titular_employee_id ?? agente_id` como employeeId.

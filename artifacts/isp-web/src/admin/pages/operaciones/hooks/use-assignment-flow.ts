@@ -542,7 +542,7 @@ export function useAssignmentFlow({
       }
       toast({
         title: "Titularidad removida",
-        description: `${modalQuitarTitular.employeeNombre} ya no es titular de ${modalQuitarTitular.puesto.nombre}. Vuelve a Disponibles.`,
+        description: `${modalQuitarTitular.employeeNombre} fue removido de ${modalQuitarTitular.puesto.nombre}.`,
       });
       setModalQuitarTitular(null);
       invalidate();

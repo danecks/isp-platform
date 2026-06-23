@@ -32,6 +32,12 @@ export function CustodiaSlotItem({
   const esRelevo = cubierto && tieneTitular && puesto.agente_id !== puesto.titular_employee_id;
   const descansoExcedente = puesto.descanso_por_ciclo === true;
   const slotVacio = (puesto as any).tiene_slot_vacio === true;
+  // "Quitar" debe poder remover al titular fijo O a un empleado real asignado solo ese día
+  // (asignación diaria sin titularidad, p. ej. una cobertura o un error). Los externos no
+  // aplican (no tienen employee_id) — esos se manejan con "Liberar".
+  const quitarEmployeeId = puesto.titular_employee_id ?? puesto.agente_id ?? null;
+  const quitarNombre = puesto.titular_nombre ?? puesto.agente_nombre ?? null;
+  const puedeQuitar = !esExterno && quitarEmployeeId != null;
 
   const borde = isOver
     ? "border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]"
@@ -135,11 +141,11 @@ export function CustodiaSlotItem({
                 <XCircle className="w-3 h-3" /><span>Falta</span>
               </button>
             )}
-            {tieneTitular && onQuitarTitular && (
+            {puedeQuitar && onQuitarTitular && (
               <button
-                onClick={e => { e.stopPropagation(); onQuitarTitular(puesto, puesto.titular_employee_id!, puesto.titular_nombre!); }}
+                onClick={e => { e.stopPropagation(); onQuitarTitular(puesto, quitarEmployeeId!, quitarNombre ?? ""); }}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-rose-300/80 bg-rose-500/10 border border-rose-500/25 hover:bg-rose-500/20 hover:text-rose-300 rounded-md transition-colors"
-                title={`Quitar titularidad de ${puesto.titular_nombre}`}
+                title={`Quitar a ${quitarNombre ?? ""}`}
               >
                 <UserMinus className="w-3 h-3" /><span>Quitar</span>
               </button>
