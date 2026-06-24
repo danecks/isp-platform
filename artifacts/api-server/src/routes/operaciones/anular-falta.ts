@@ -9,6 +9,75 @@ function getRol(req: any): string {
   catch { return ""; }
 }
 
+type DBClient = { query: (text: string, params?: any[]) => Promise<{ rows: any[]; rowCount: number }> };
+
+// Restaura simétricamente lo que anular-falta revirtió (nómina del titular, HE de
+// cobertura neutralizadas, segmento de ausencia y alertas RRHH), usando el snapshot
+// guardado en metadata_json. Lo usan reactivar-falta y el rechazo de RRHH.
+export async function restaurarRollbackFalta(db: DBClient, meta: any): Promise<void> {
+  if (!meta) return;
+
+  // (1) Restaurar la novedad de descuento del titular.
+  const prev = meta.nov_titular_prev;
+  if (prev && meta.falta_employee_id && meta.fecha) {
+    await db.query(`
+      UPDATE novedades_nomina_diarias
+         SET falta = $3, suspension = $4, descuento_dia = $5, dias_descuento = $6,
+             impacto_nomina = $7, updated_at = NOW()
+       WHERE fecha = $1::date AND employee_id = $2
+         AND COALESCE(impacto_nomina, 'pendiente') NOT IN ('aprobado_rrhh','rechazado_rrhh','pagado_efectivo')
+    `, [
+      meta.fecha, meta.falta_employee_id,
+      prev.falta ?? false, prev.suspension ?? false, prev.descuento_dia ?? false,
+      prev.dias_descuento ?? 0, prev.impacto_nomina ?? 'pendiente',
+    ]);
+  }
+
+  // (2) Reactivar las HE de cobertura neutralizadas (genera_horas_extra).
+  const segHE = Array.isArray(meta.segmentos_he_neutralizados) ? meta.segmentos_he_neutralizados : [];
+  if (segHE.length) {
+    await db.query(
+      `UPDATE cobertura_segmentos SET genera_horas_extra = TRUE, updated_at = NOW() WHERE id = ANY($1::int[])`,
+      [segHE.map((x: any) => Number(x))],
+    );
+  }
+
+  // (3) Re-insertar el segmento de ausencia sin cubrir borrado.
+  const segAus = Array.isArray(meta.segmentos_ausencia) ? meta.segmentos_ausencia : [];
+  for (const s of segAus) {
+    // Idempotente por (fecha, puesto_id, tipo_cobertura): el UNIQUE no dedup cuando
+    // employee_id es NULL, así que se evita la fila duplicada con NOT EXISTS.
+    await db.query(`
+      INSERT INTO cobertura_segmentos
+        (fecha, puesto_id, client_id, sede_id, employee_id, empleado_nombre,
+         tipo_cobertura, hora_inicio, hora_fin, horas_calculadas, motivo,
+         fue_en_dia_descanso, genera_horas_extra, horas_extra_calculadas,
+         observaciones, usuario_registro)
+      SELECT $1::date,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16
+       WHERE NOT EXISTS (
+         SELECT 1 FROM cobertura_segmentos
+          WHERE fecha = $1::date AND puesto_id = $2 AND tipo_cobertura = $7
+            AND COALESCE(employee_id, -1) = COALESCE($5::int, -1)
+       )
+    `, [
+      s.fecha, s.puesto_id, s.client_id ?? null, s.sede_id ?? null, s.employee_id ?? null,
+      s.empleado_nombre ?? null, s.tipo_cobertura, s.hora_inicio ?? null, s.hora_fin ?? null,
+      s.horas_calculadas ?? null, s.motivo ?? null, s.fue_en_dia_descanso ?? false,
+      s.genera_horas_extra ?? false, s.horas_extra_calculadas ?? null,
+      s.observaciones ?? null, s.usuario_registro ?? null,
+    ]);
+  }
+
+  // (4) Restaurar el estado previo de las alertas RRHH.
+  const alertas = Array.isArray(meta.alertas_resueltas) ? meta.alertas_resueltas : [];
+  for (const a of alertas) {
+    await db.query(
+      `UPDATE rrhh_alertas SET estado = $2, resuelta_at = NULL WHERE id = $1`,
+      [Number(a.id), a.estado_anterior ?? 'pendiente'],
+    );
+  }
+}
+
 // POST /api/operaciones/anular-falta
 // Limpia el estado "faltando" de un puesto fijo y crea un evento RRHH
 // 'anulacion_falta' en estado pendiente_aprobacion. NO toca nómina ni HE.
@@ -122,6 +191,75 @@ router.post("/operaciones/anular-falta", async (req, res) => {
       });
     }
 
+    // ── ROLLBACK COMPLETO: nómina + segmentos + alertas ─────────────────────────
+    // Antes solo se tocaba el slot y los eventos RRHH; el descuento del titular, las
+    // HE de cobertura y la alerta quedaban "pegados", e incluso el cierre regeneraba
+    // una HE nueva (genera_horas_extra seguía TRUE) → HE duplicadas. Aquí se revierte
+    // todo y se guarda el estado previo en el snapshot para poder restaurarlo.
+    const titularId = Number(po.falta_employee_id);
+
+    // (1) Revertir la novedad de descuento del titular (si RRHH no la decidió ya).
+    const { rows: novPrevRows } = await client.query(`
+      SELECT falta, suspension, descuento_dia, dias_descuento, impacto_nomina
+        FROM novedades_nomina_diarias
+       WHERE fecha = $1::date AND employee_id = $2
+    `, [fechaDia, titularId]);
+    const novTitularPrev = novPrevRows[0] ?? null;
+    await client.query(`
+      UPDATE novedades_nomina_diarias
+         SET falta = FALSE, suspension = FALSE, descuento_dia = FALSE,
+             dias_descuento = 0, impacto_nomina = 'pendiente', updated_at = NOW()
+       WHERE fecha = $1::date AND employee_id = $2
+         AND COALESCE(impacto_nomina, 'pendiente') NOT IN ('aprobado_rrhh','rechazado_rrhh','pagado_efectivo')
+    `, [fechaDia, titularId]);
+
+    // (2) Neutralizar en origen las HE de cobertura de este puesto+fecha, para que el
+    // cierre NO regenere una HE nueva (causa de las HE duplicadas). Reversible.
+    const { rows: segHE } = await client.query(`
+      SELECT id FROM cobertura_segmentos
+       WHERE fecha = $1::date AND puesto_id = $2 AND genera_horas_extra = TRUE
+    `, [fechaDia, puestoId]);
+    const segmentosHENeutralizados = segHE.map((s: any) => Number(s.id));
+    if (segmentosHENeutralizados.length) {
+      await client.query(
+        `UPDATE cobertura_segmentos SET genera_horas_extra = FALSE, updated_at = NOW() WHERE id = ANY($1::int[])`,
+        [segmentosHENeutralizados],
+      );
+    }
+
+    // (3) Quitar el segmento de ausencia sin cubrir del titular (si existe). Se guarda
+    // la fila completa para poder re-insertarla en reactivar/rechazo.
+    const { rows: segAus } = await client.query(`
+      SELECT id, fecha, puesto_id, client_id, sede_id, employee_id, empleado_nombre,
+             tipo_cobertura, hora_inicio, hora_fin, horas_calculadas, motivo,
+             fue_en_dia_descanso, genera_horas_extra, horas_extra_calculadas,
+             observaciones, usuario_registro
+        FROM cobertura_segmentos
+       WHERE fecha = $1::date AND puesto_id = $2 AND tipo_cobertura = 'ausencia_sin_cubrir'
+    `, [fechaDia, puestoId]);
+    const segmentosAusencia = segAus;
+    if (segmentosAusencia.length) {
+      await client.query(
+        `DELETE FROM cobertura_segmentos WHERE id = ANY($1::int[])`,
+        [segmentosAusencia.map((s: any) => Number(s.id))],
+      );
+    }
+
+    // (4) Resolver las alertas RRHH generadas por esta falta (puesto+fecha). Reversible.
+    const { rows: alertasPrev } = await client.query(`
+      SELECT id, estado FROM rrhh_alertas
+       WHERE puesto_id = $1 AND fecha_evento::date = $2::date
+         AND tipo IN ('faltante_sin_cubrir','horas_extra_pendiente')
+         AND estado NOT IN ('anulado','resuelta')
+    `, [puestoId, fechaDia]);
+    const alertasResueltas = alertasPrev.map((a: any) => ({ id: Number(a.id), estado_anterior: a.estado }));
+    if (alertasResueltas.length) {
+      await client.query(
+        `UPDATE rrhh_alertas SET estado = 'resuelta', resuelta_at = NOW() WHERE id = ANY($1::int[])`,
+        [alertasResueltas.map((a) => a.id)],
+      );
+    }
+
     const snapshot = {
       puesto_id: Number(po.id),
       fecha: fechaDia,
@@ -131,6 +269,10 @@ router.post("/operaciones/anular-falta", async (req, res) => {
       falta_usuario: po.falta_usuario ?? null,
       motivo_anulacion: motivoTxt,
       eventos_falta_anulados: eventosFaltaAnulados,
+      nov_titular_prev: novTitularPrev,
+      segmentos_he_neutralizados: segmentosHENeutralizados,
+      segmentos_ausencia: segmentosAusencia,
+      alertas_resueltas: alertasResueltas,
     };
 
     // Limpiar el estado del slot (sin tocar nómina/HE/segmentos)
@@ -279,6 +421,9 @@ router.post("/operaciones/reactivar-falta", async (req, res) => {
         `, [p.estado_anterior ?? "pendiente_aprobacion", p.id]);
       }
     }
+
+    // Restaurar simétricamente nómina + segmentos + alertas que anular revirtió.
+    await restaurarRollbackFalta(client, meta);
 
     // Marcar la solicitud de anulación como revertida (deja de aparecer "Reactivar")
     await client.query(`

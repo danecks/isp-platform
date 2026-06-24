@@ -2,6 +2,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { calcularKPIDisciplinario } from "../services/disciplinary-kpi";
+import { restaurarRollbackFalta } from "./operaciones/anular-falta";
 
 export const eventosRrhhRouter = Router();
 
@@ -463,7 +464,9 @@ eventosRrhhRouter.patch("/rrhh/eventos/:id/estado", async (req, res) => {
             `, [p.estado_anterior ?? "pendiente_aprobacion", p.id]);
           }
         }
-        logger.info({ eventoId: id, puestoId: snap.puesto_id }, "Anulación de falta rechazada → slot y eventos restaurados");
+        // Restaurar simétricamente nómina + segmentos + alertas que anular revirtió.
+        await restaurarRollbackFalta(client, snap);
+        logger.info({ eventoId: id, puestoId: snap.puesto_id }, "Anulación de falta rechazada → slot, eventos, nómina, segmentos y alertas restaurados");
       }
     }
 

@@ -535,7 +535,48 @@ coberturaRouter.post("/cobertura/segmentos", async (req, res) => {
           }
         }
 
+        // No generar falta/amonestación del titular si HOY está cubriendo en OTRO
+        // puesto/custodia o está en un Servicio Especial (SSA): no puede estar en dos
+        // lugares a la vez, sigue trabajando → no es falta ni descuento. Espeja la
+        // detección del tablero (cubriendoOtroLado + ssaMap).
+        let titularCubreOtroLado = false;
         if (segTipo === "relevo" && tipoNovedadTitular && titularId && Number(titularId) !== Number(employeeId)) {
+          try {
+            const { rows: otroLado } = await pool.query(
+              `SELECT 1
+                 FROM cobertura_segmentos
+                WHERE employee_id = $1 AND fecha = $2::date AND puesto_id <> $3
+                  AND tipo_cobertura <> 'ausencia_sin_cubrir'
+               UNION ALL
+               SELECT 1
+                 FROM custodia_asignacion_diaria
+                WHERE employee_id = $1 AND fecha = $2::date
+               UNION ALL
+               SELECT 1
+                 FROM ssa_agentes sa
+                 JOIN solicitudes_servicio_adicional s2 ON s2.id = sa.ssa_id
+                WHERE sa.employee_id = $1 AND sa.estado IN ('asignado','confirmado')
+                  AND s2.estado_general NOT IN ('cancelada','cerrada')
+                  AND $2::date BETWEEN s2.fecha AND COALESCE(s2.fecha_fin, s2.fecha)
+               UNION ALL
+               SELECT 1
+                 FROM solicitudes_servicio_adicional s
+                WHERE s.agente_id = $1 AND s.estado_general NOT IN ('cancelada','cerrada')
+                  AND $2::date BETWEEN s.fecha AND COALESCE(s.fecha_fin, s.fecha)
+               LIMIT 1`,
+              [titularId, fecha, puestoId]
+            );
+            titularCubreOtroLado = otroLado.length > 0;
+            if (titularCubreOtroLado) {
+              logger.info({ titularId, fecha, puestoId },
+                "POST /cobertura/segmentos — titular cubre en otro lado/SSA: se omite falta y descuento");
+            }
+          } catch (otroErr) {
+            logger.warn({ otroErr }, "POST /cobertura/segmentos — verificación 'titular cubre otro lado' falló (no bloqueante)");
+          }
+        }
+
+        if (segTipo === "relevo" && tipoNovedadTitular && titularId && Number(titularId) !== Number(employeeId) && !titularCubreOtroLado) {
           try {
             // Mapeo motivo (front) → tipo_evento RRHH (mirror asignacion.ts)
             const tiposRrhhTitular: Record<string, string> = {
