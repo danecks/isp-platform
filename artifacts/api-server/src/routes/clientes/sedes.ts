@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../../lib/logger";
+import { puestoCubiertoSql } from "../../lib/cobertura-puesto";
 
 const sedesRouter = Router();
 
@@ -10,7 +11,7 @@ sedesRouter.get("/clientes/:id/sedes", async (req, res) => {
     const { rows: sedes } = await pool.query(
       `SELECT cs.*,
         (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE) AS total_puestos,
-        (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE AND po.estado = 'cubierto') AS puestos_cubiertos
+        (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE AND ${puestoCubiertoSql("po")}) AS puestos_cubiertos
        FROM client_sedes cs
        WHERE cs.client_id = $1
        ORDER BY cs.nombre`,

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, incidentsTable, leadsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { puestoCubiertoSql } from "../lib/cobertura-puesto";
 import {
   classifyMessage,
   extractPhoneFromWaId,
@@ -49,7 +50,7 @@ async function crearIncidenciaDesdeCarnet(args: {
   const { rows: poRows } = await pool.query(
     `SELECT id, nombre, cliente_nombre, cliente_id, sede_id
      FROM puestos_operativos
-     WHERE agente_id = $1 AND estado = 'cubierto'
+     WHERE agente_id = $1 AND ${puestoCubiertoSql("puestos_operativos")}
      LIMIT 1`,
     [emp.employee_id]
   );

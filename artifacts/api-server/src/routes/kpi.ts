@@ -8,6 +8,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { puestoCubiertoSql } from "../lib/cobertura-puesto";
 
 const router = Router();
 
@@ -64,7 +65,7 @@ router.get("/kpi/dashboard", async (_req, res) => {
     // 5. Puestos cubiertos (custodia activa = puestos operativos con estado cubierto)
     const { rows: puestosRows } = await pool.query<{ cubiertos: string; total: string }>(`
       SELECT
-        COUNT(*) FILTER (WHERE estado = 'cubierto') AS cubiertos,
+        COUNT(*) FILTER (WHERE ${puestoCubiertoSql("puestos_operativos")}) AS cubiertos,
         COUNT(*)                                    AS total
       FROM puestos_operativos
       WHERE activo = TRUE

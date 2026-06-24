@@ -1316,7 +1316,6 @@ Por favor ingresa al sistema o responde para continuar.',
         turno           VARCHAR(20)  NOT NULL DEFAULT 'día',
         agente_id       INTEGER REFERENCES employees(id) ON DELETE SET NULL,
         agente_nombre   VARCHAR(255),
-        estado          VARCHAR(30)  NOT NULL DEFAULT 'descubierto',
         orden           INTEGER      NOT NULL DEFAULT 0,
         activo          BOOLEAN      NOT NULL DEFAULT TRUE,
         notas           TEXT,
@@ -1325,6 +1324,11 @@ Por favor ingresa al sistema o responde para continuar.',
       )
     `);
     logger.info("Auto-migrate: tabla 'puestos_operativos' verificada/creada");
+
+    // Retiro definitivo de la columna legacy de cobertura `estado`
+    // ('cubierto'/'descubierto'). La cobertura real se deriva de puesto_slots
+    // vía lib/cobertura-puesto.ts; esta columna quedó como verdad muerta.
+    await pool.query(`ALTER TABLE puestos_operativos DROP COLUMN IF EXISTS estado`);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS movimientos_operativos (
@@ -1373,12 +1377,12 @@ Por favor ingresa al sistema o responde para continuar.',
           const titularNombre = titular?.nombre_completo ?? null;
           await pool.query(
             `INSERT INTO puestos_operativos
-              (cliente_id, cliente_nombre, nombre, turno, estado, orden, activo,
+              (cliente_id, cliente_nombre, nombre, turno, orden, activo,
                tipo_turno_id, fecha_inicio_ciclo, titular_employee_id, titular_nombre,
                salario_puesto, tipo_puesto)
-             VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, '2026-01-01', $8, $9, 3800, 'normal')`,
+             VALUES ($1, $2, $3, $4, $5, TRUE, $6, '2026-01-01', $7, $8, 3800, 'normal')`,
             [cli.id, cli.nombre_comercial || cli.nombre, nombrePuesto, turno,
-             titularId ? 'cubierto' : 'descubierto', orden, turno24Id, titularId, titularNombre]
+             orden, turno24Id, titularId, titularNombre]
           );
           orden++;
           if (titularId) gIdx++;

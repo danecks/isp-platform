@@ -138,7 +138,6 @@ router.post("/operaciones/asignar", async (req, res) => {
             `UPDATE puestos_operativos
              SET agente_id      = $1,
                  agente_nombre  = $2,
-                 estado         = 'cubierto',
                  titular_employee_id = $1,
                  titular_nombre      = $2,
                  updated_at     = NOW()
@@ -221,7 +220,6 @@ router.post("/operaciones/asignar", async (req, res) => {
             `UPDATE puestos_operativos
              SET agente_id      = $1,
                  agente_nombre  = $2,
-                 estado         = 'cubierto',
                  updated_at     = NOW()
              WHERE id = $3`,
             [agenteId, agente.nombre_completo, puestoId]
@@ -826,7 +824,6 @@ router.post("/operaciones/sustituir", async (req, res) => {
                agente_nombre         = $2,
                titular_employee_id   = $1,
                titular_nombre        = $2,
-               estado                = 'cubierto',
                updated_at            = NOW()
            WHERE id = $3`,
           [agenteEntranteId, entrante.nombre_completo, puestoId]
@@ -1292,7 +1289,7 @@ router.post("/operaciones/liberar", async (req, res) => {
       // IMPORTANTE: solo se limpia agente_id (cobertura del día).
       // El titular_employee_id se preserva para mantener la asignación base.
       await client.query(
-        `UPDATE puestos_operativos SET agente_id=NULL, agente_nombre=NULL, estado='descubierto', updated_at=NOW()
+        `UPDATE puestos_operativos SET agente_id=NULL, agente_nombre=NULL, updated_at=NOW()
          WHERE id=$1`,
         [puestoId]
       );

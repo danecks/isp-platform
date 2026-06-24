@@ -354,8 +354,8 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
         `INSERT INTO puestos_operativos
            (nombre, cliente_id, cliente_nombre, ubicacion, tipo, tipo_turno_id,
             aplica_igss, regimen_igss, salario_puesto, tarifa_puesto,
-            sede_id, fecha_inicio_ciclo, hora_entrada, estado, activo, orden)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'activo',TRUE,0) RETURNING id`,
+            sede_id, fecha_inicio_ciclo, hora_entrada, activo, orden)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,TRUE,0) RETURNING id`,
         [
           nombre,
           clienteId,
@@ -556,7 +556,7 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
           if (ordenTitular === 1) {
             await pool.query(
               `UPDATE puestos_operativos SET titular_employee_id = $1, titular_nombre = $2,
-               agente_id = $1, estado = 'cubierto', estado_operativo_puesto = 'normal' WHERE id = $3`,
+               agente_id = $1, estado_operativo_puesto = 'normal' WHERE id = $3`,
               [empId, nombre, pId]
             ).catch(() => {});
           }
@@ -672,8 +672,7 @@ importacionMaestroRouter.post("/importacion/maestro", async (req: any, res: any)
     try {
       await pool.query(`
         UPDATE puestos_operativos po
-        SET agente_id = pt.employee_id,
-            estado    = 'cubierto'
+        SET agente_id = pt.employee_id
         FROM puesto_titulares pt
         WHERE pt.puesto_id = po.id
           AND pt.orden = 1

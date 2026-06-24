@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../../lib/logger";
+import { puestoCubiertoSql, puestoEstadoCoberturaSql } from "../../lib/cobertura-puesto";
 
 const fichaRouter = Router();
 
@@ -32,7 +33,7 @@ fichaRouter.get("/clientes/:id/ficha", async (req, res) => {
     const { rows: sedesRows } = await pool.query(
       `SELECT cs.*,
          (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE) AS total_puestos,
-         (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE AND po.estado = 'cubierto') AS puestos_cubiertos,
+         (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE AND ${puestoCubiertoSql("po")}) AS puestos_cubiertos,
          (SELECT COUNT(*)::int FROM puestos_operativos po WHERE po.sede_id = cs.id AND po.activo = TRUE AND EXISTS (SELECT 1 FROM puesto_slots ps WHERE ps.puesto_id = po.id AND ps.activo = TRUE AND ps.empleado_id IS NOT NULL)) AS puestos_con_titular
        FROM client_sedes cs
        WHERE cs.client_id = $1
@@ -50,7 +51,7 @@ fichaRouter.get("/clientes/:id/ficha", async (req, res) => {
          po.sede_id, cs.nombre AS sede_nombre,
          po.titular_employee_id, po.titular_nombre,
          po.agente_id, po.agente_nombre,
-         po.estado, po.orden, po.notas, po.activo,
+         ${puestoEstadoCoberturaSql("po")} AS estado, po.orden, po.notas, po.activo,
          po.zona_operativa_id, oz.nombre AS zona_nombre,
          po.tipo_turno_id, t.nombre AS tipo_turno_nombre,
          po.fecha_inicio_ciclo,
@@ -77,7 +78,7 @@ fichaRouter.get("/clientes/:id/ficha", async (req, res) => {
          po.cantidad_contratada,
          po.titular_employee_id, po.titular_nombre,
          po.agente_id, po.agente_nombre,
-         po.estado,
+         ${puestoEstadoCoberturaSql("po")} AS estado,
          CASE
            WHEN po.agente_id IS NULL THEN 'descubierto'
            WHEN po.agente_id = po.titular_employee_id THEN 'titular'
@@ -210,8 +211,8 @@ fichaRouter.post("/clientes/:id/puestos", async (req, res) => {
           cantidad_contratada, tarifa_puesto, tipo_servicio, elegible_horas_extra,
           costo_hora, sede_id, notas, orden, zona_operativa_id,
           titular_employee_id, titular_nombre, tipo_turno_id, fecha_inicio_ciclo,
-          direccion, estado, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,'disponible',TRUE)
+          direccion, activo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,TRUE)
        RETURNING *`,
       [
         clientId, clienteNombre, nombre,
@@ -334,7 +335,7 @@ fichaRouter.get("/puestos/:id", async (req, res) => {
          po.sede_id, cs.nombre AS sede_nombre,
          po.titular_employee_id, po.titular_nombre,
          po.agente_id, po.agente_nombre,
-         po.estado, po.orden, po.notas, po.activo,
+         ${puestoEstadoCoberturaSql("po")} AS estado, po.orden, po.notas, po.activo,
          po.zona_operativa_id, oz.nombre AS zona_nombre,
          po.tipo_turno_id, t.nombre AS turno_nombre,
          po.fecha_inicio_ciclo,

@@ -10,7 +10,7 @@ import {
 } from "./_helpers/cierre-sync";
 import { getActorFromReq } from "../../lib/auth-helpers";
 import { enlazarPagosCashAFalta } from "./_helpers/horas-extra";
-import { puestoCubiertoSql } from "../../lib/cobertura-puesto";
+import { puestoCubiertoSql, puestoEstadoCoberturaSql } from "../../lib/cobertura-puesto";
 
 const router = Router();
 
@@ -406,7 +406,7 @@ router.post("/operaciones/cierre", async (req, res) => {
     } else {
       // Estado actual del pizarrón — titular histórico de hoy
       const { rows: puestoSnap } = await pool.query(`
-        SELECT po.id, po.nombre, po.cliente_nombre, po.cliente_id, po.estado,
+        SELECT po.id, po.nombre, po.cliente_nombre, po.cliente_id, ${puestoEstadoCoberturaSql("po")} AS estado,
                po.agente_id, po.agente_nombre,
                -- TH: titular efectivo para hoy (histórico con fallback)
                COALESCE(

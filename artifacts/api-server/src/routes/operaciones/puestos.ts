@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool, todayGT } from "@workspace/db";
 import { logger } from "../../lib/logger";
+import { puestoEstadoCoberturaSql } from "../../lib/cobertura-puesto";
 
 import { calcularEstadoCiclo } from "../../lib/turno-calc";
 import {
@@ -59,7 +60,7 @@ router.post("/operaciones/puestos/:id/titular", async (req, res) => {
       );
       if (!puesto.agente_id) {
         await txT.query(
-          `UPDATE puestos_operativos SET agente_id=$1, agente_nombre=$2, estado='cubierto', updated_at=NOW() WHERE id=$3`,
+          `UPDATE puestos_operativos SET agente_id=$1, agente_nombre=$2, updated_at=NOW() WHERE id=$3`,
           [titularEmployeeId, emp.nombre_completo, puestoId]
         );
       }
@@ -180,7 +181,7 @@ router.post("/operaciones/quitar-titularidad", async (req, res) => {
     if (puesto.agente_id === employeeId) {
       await client.query(
         `UPDATE puestos_operativos
-            SET agente_id = NULL, agente_nombre = NULL, estado = 'vacante', updated_at = NOW()
+            SET agente_id = NULL, agente_nombre = NULL, updated_at = NOW()
           WHERE id = $1`,
         [puestoId]
       );
@@ -323,7 +324,7 @@ router.get("/operaciones/puestos-salarios", async (req, res) => {
     const { rows } = await pool.query(`
       SELECT
         po.id, po.nombre, po.cliente_id, po.cliente_nombre,
-        po.salario_puesto, po.activo, po.estado,
+        po.salario_puesto, po.activo, ${puestoEstadoCoberturaSql("po")} AS estado,
         c.nombre_comercial AS cliente_nombre_comercial
       FROM puestos_operativos po
       LEFT JOIN clients c ON c.id = po.cliente_id

@@ -494,11 +494,11 @@ export async function runSeed(verbose = true) {
       const { rows: [pRow] } = await client.query<{ id: number }>(
         `INSERT INTO puestos_operativos (
            cliente_id, cliente_nombre, nombre, sede_id, titular_employee_id, titular_nombre,
-           estado, activo, aplica_igss, regimen_igss, elegible_horas_extra,
+           activo, aplica_igss, regimen_igss, elegible_horas_extra,
            hora_entrada, hora_salida, jornada, salario_puesto, notas
          ) VALUES (
            $1, 'CLIENTE PRUEBA E2E ABRIL', $2, $3, $4, $5,
-           'cubierto', true, $6, $7, true,
+           true, $6, $7, true,
            '07:00', '15:00', 'tiempo_completo', $8, $9
          ) RETURNING id`,
         [

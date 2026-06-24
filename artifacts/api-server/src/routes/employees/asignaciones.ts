@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, employeesTable, pool } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../../lib/logger";
+import { puestoEstadoCoberturaSql } from "../../lib/cobertura-puesto";
 
 const router = Router();
 
@@ -120,7 +121,7 @@ router.get("/employees/:id/operacion", async (req, res) => {
     // Puesto operativo titular (asignación base)
     const { rows: puestoTitularRows } = await pool.query(`
       SELECT po.id, po.nombre AS puesto_nombre, po.cliente_nombre, po.turno,
-             po.horario, po.jornada, po.estado AS estado_puesto,
+             po.horario, po.jornada, ${puestoEstadoCoberturaSql("po")} AS estado_puesto,
              po.agente_id, po.agente_nombre,
              cs.nombre AS sede_nombre
       FROM puestos_operativos po
@@ -257,7 +258,7 @@ router.get("/employees/:id/asignacion-operativa", async (req, res) => {
         po.turno           AS puesto_turno_texto,
         po.horario         AS puesto_horario,
         po.jornada         AS puesto_jornada,
-        po.estado          AS puesto_estado,
+        ${puestoEstadoCoberturaSql("po")}          AS puesto_estado,
         -- Datos derivados de la sede
         cs.nombre          AS sede_nombre,
         -- Datos derivados del cliente
@@ -315,7 +316,7 @@ router.get("/employees/:id/asignacion-operativa", async (req, res) => {
         po.turno              AS puesto_turno_texto,
         po.horario            AS puesto_horario,
         po.jornada            AS puesto_jornada,
-        po.estado             AS puesto_estado,
+        ${puestoEstadoCoberturaSql("po")}             AS puesto_estado,
         cs.nombre             AS sede_nombre,
         c.nombre              AS cliente_nombre,
         c.portal_cliente_id   AS cliente_portal_id,
@@ -363,7 +364,7 @@ router.get("/employees/:id/asignacion-operativa", async (req, res) => {
         po.turno              AS puesto_turno_texto,
         po.horario            AS puesto_horario,
         po.jornada            AS puesto_jornada,
-        po.estado             AS puesto_estado,
+        ${puestoEstadoCoberturaSql("po")}             AS puesto_estado,
         cs.nombre             AS sede_nombre,
         c.nombre              AS cliente_nombre,
         c.portal_cliente_id   AS cliente_portal_id,
@@ -436,21 +437,21 @@ router.put("/employees/:id/asignacion-operativa", async (req, res) => {
     if (prevPuestoId && prevPuestoId !== (puesto_id || null)) {
       await pool.query(`
         UPDATE puestos_operativos
-        SET titular_employee_id = NULL, estado = 'descubierto', updated_at = NOW()
+        SET titular_employee_id = NULL, updated_at = NOW()
         WHERE id = $1 AND titular_employee_id = $2
       `, [prevPuestoId, id]);
     }
     // 2. Si este empleado ya era titular en algún otro puesto distinto, limpiarlo también
     await pool.query(`
       UPDATE puestos_operativos
-      SET titular_employee_id = NULL, estado = 'descubierto', updated_at = NOW()
+      SET titular_employee_id = NULL, updated_at = NOW()
       WHERE titular_employee_id = $1 AND id != $2
     `, [id, puesto_id || 0]);
     // 3. Asignar como titular en el nuevo puesto (solo si tipo_asignacion = 'titular' y hay puesto)
     if (tipo_asignacion === "titular" && puesto_id) {
       await pool.query(`
         UPDATE puestos_operativos
-        SET titular_employee_id = $1, estado = 'cubierto', updated_at = NOW()
+        SET titular_employee_id = $1, updated_at = NOW()
         WHERE id = $2
       `, [id, puesto_id]);
     }

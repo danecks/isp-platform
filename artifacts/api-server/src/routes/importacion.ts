@@ -239,8 +239,8 @@ importacionRouter.post("/importacion/puestos", async (req, res) => {
       await pool.query(
         `INSERT INTO puestos_operativos
            (nombre, cliente_nombre, turno, horario, jornada,
-            cantidad_contratada, costo_hora, notas, estado, activo, orden)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'descubierto',TRUE,0)`,
+            cantidad_contratada, costo_hora, notas, activo, orden)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,0)`,
         [nombre, clienteNombre, turno, horario, jornada, cantidad, costoHora, notas]
       );
       results.push({ fila, estado: "ok", datos: { nombre, clienteNombre } });
@@ -948,8 +948,8 @@ importacionRouter.post("/importacion/crear-puestos-legacy", async (req: any, res
         `INSERT INTO puestos_operativos (
            cliente_id, cliente_nombre, nombre, orden,
            titular_employee_id, titular_nombre,
-           estado, activo
-         ) VALUES ($1, $2, $3, $4, $5, $6, 'cubierto', true)
+           activo
+         ) VALUES ($1, $2, $3, $4, $5, $6, true)
          RETURNING id`,
         [emp.cliente_id, emp.cliente_nombre, nombrePuesto, numPuesto,
          emp.emp_id, emp.nombre_completo]

@@ -55,7 +55,7 @@ supervisionProgramacionesRouter.get("/supervision-programaciones/catalogos", asy
         `SELECT po.id, po.nombre, po.cliente_id
            FROM puestos_operativos po
            JOIN clients c ON c.id = po.cliente_id
-          WHERE COALESCE(po.estado, 'activo') = 'activo'
+          WHERE COALESCE(po.activo, TRUE) = TRUE
             AND COALESCE(c.estado,  'activo') = 'activo'
           ORDER BY po.nombre`
       ),

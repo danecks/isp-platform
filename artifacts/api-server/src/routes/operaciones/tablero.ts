@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool, todayGT } from "@workspace/db";
 import { logger } from "../../lib/logger";
+import { puestoEstadoCoberturaSql } from "../../lib/cobertura-puesto";
 
 import { calcularEstadoCiclo } from "../../lib/turno-calc";
 
@@ -26,7 +27,7 @@ router.get("/operaciones/tablero", async (req, res) => {
         po.horario,
         po.jornada,
         po.sede_id,
-        po.estado,
+        ${puestoEstadoCoberturaSql("po")} AS estado,
         po.orden,
         po.notas,
         po.updated_at,

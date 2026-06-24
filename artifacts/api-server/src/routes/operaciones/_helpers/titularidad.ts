@@ -42,7 +42,6 @@ export async function liberarTitularidadAgente(
       agente_nombre       = CASE WHEN agente_id = $1 THEN NULL ELSE agente_nombre END,
       titular_employee_id = NULL,
       titular_nombre      = NULL,
-      estado              = CASE WHEN agente_id = $1 THEN 'descubierto' ELSE estado END,
       updated_at          = NOW()
     WHERE titular_employee_id = $1
       AND activo = TRUE

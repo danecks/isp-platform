@@ -91,16 +91,16 @@ async function seed(): Promise<Seed> {
   // Puestos fijos (no custodia)
   const { rows: poA } = await pool.query<{ id: number }>(
     `INSERT INTO puestos_operativos
-       (cliente_id, cliente_nombre, nombre, turno, estado, activo, tipo_puesto,
+       (cliente_id, cliente_nombre, nombre, turno, activo, tipo_puesto,
         titular_employee_id, titular_nombre, agente_id, agente_nombre)
-     VALUES ($1, 'Cliente A', 'Puesto Fijo A', 'día', 'cubierto', TRUE, 'normal',
+     VALUES ($1, 'Cliente A', 'Puesto Fijo A', 'día', TRUE, 'normal',
              $2, 'Agente A', $2, 'Agente A') RETURNING id`,
     [ca[0].id, empA[0].id]);
   const { rows: poB } = await pool.query<{ id: number }>(
     `INSERT INTO puestos_operativos
-       (cliente_id, cliente_nombre, nombre, turno, estado, activo, tipo_puesto,
+       (cliente_id, cliente_nombre, nombre, turno, activo, tipo_puesto,
         titular_employee_id, titular_nombre, agente_id, agente_nombre)
-     VALUES ($1, 'Cliente B', 'Puesto Fijo B', 'día', 'cubierto', TRUE, 'normal',
+     VALUES ($1, 'Cliente B', 'Puesto Fijo B', 'día', TRUE, 'normal',
              $2, 'Agente B', $2, 'Agente B') RETURNING id`,
     [cb[0].id, empB[0].id]);
 
