@@ -35,6 +35,7 @@ export function PanelHEEfectivo() {
   const [desde, setDesde] = useState(primerDiaMes);
   const [hasta, setHasta] = useState(hoyIso);
   const [busqueda, setBusqueda] = useState("");
+  const [origenFiltro, setOrigenFiltro] = useState<"todos" | "anexo" | "pizarron">("todos");
   const [rows, setRows] = useState<FilaHE[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,11 +64,12 @@ export function PanelHEEfectivo() {
   useEffect(() => { cargar(); }, [cargar]);
 
   const q = busqueda.trim().toLowerCase();
-  const filtradas = q
-    ? rows.filter((r) =>
-        [r.empleado_nombre, r.puesto_nombre, r.cliente_nombre]
-          .some((v) => (v ?? "").toLowerCase().includes(q)))
-    : rows;
+  const filtradas = rows.filter((r) => {
+    if (origenFiltro !== "todos" && r.origen !== origenFiltro) return false;
+    if (q && ![r.empleado_nombre, r.puesto_nombre, r.cliente_nombre]
+      .some((v) => (v ?? "").toLowerCase().includes(q))) return false;
+    return true;
+  });
   const totalHoras = filtradas.reduce((s, r) => s + (Number(r.horas_extra) || 0), 0);
   const totalMonto = filtradas.reduce((s, r) => s + (Number(r.monto) || 0), 0);
   const puestoCliente = (r: FilaHE) => {
@@ -113,6 +115,15 @@ export function PanelHEEfectivo() {
           <label className="block text-[10px] text-white/40 mb-1">Hasta</label>
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
             className="bg-white/4 border border-white/8 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary/40" />
+        </div>
+        <div>
+          <label className="block text-[10px] text-white/40 mb-1">Origen</label>
+          <select value={origenFiltro} onChange={(e) => setOrigenFiltro(e.target.value as "todos" | "anexo" | "pizarron")}
+            className="bg-white/4 border border-white/8 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary/40 [&_option]:bg-slate-800">
+            <option value="todos">Todos</option>
+            <option value="anexo">Eventos RRHH (Anexo HE)</option>
+            <option value="pizarron">Pizarrón</option>
+          </select>
         </div>
         <div className="flex-1 min-w-[200px]">
           <label className="block text-[10px] text-white/40 mb-1">Buscar colaborador</label>
