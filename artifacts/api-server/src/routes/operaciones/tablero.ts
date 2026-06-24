@@ -781,8 +781,19 @@ router.get("/operaciones/tablero", async (req, res) => {
         // verificación de faltas, así que la boleta de falta quedaba sin efecto
         // cuando la persona ya estaba en custodia_asignacion_diaria (p. ej. al
         // armar el día copiando al titular en su mismo slot).
+        // Un asignado del día con boleta de falta solo se OCULTA si esa falta
+        // corresponde a ESTE slot: es el TITULAR del slot que no se presentó (caso
+        // típico al armar el día copiando al titular en su propio slot). Si es un
+        // RELEVO/cobertura colocado explícitamente aquí (distinto del titular, o un
+        // slot sin titular), su falta pertenece a su puesto de ORIGEN y NO debe
+        // ocultarlo donde sí está cubriendo hoy. Antes la falta era global por
+        // empleado y "fugaba": un custodio asignado a cubrir otra custodia
+        // desaparecía del slot destino por una falta registrada en su origen.
+        const asignadoEsTitularDeEsteSlot =
+          !!asig && !asig.es_externo && !!titular &&
+          Number(asig.employee_id) === titular.employee_id;
         const asignadoFaltando =
-          !!asig && !asig.es_externo && custodiaFaltaSet.has(Number(asig.employee_id));
+          asignadoEsTitularDeEsteSlot && custodiaFaltaSet.has(Number(asig.employee_id));
         // Slot por sobre la demanda del día: si hay titular fijo, cuenta como descanso.
         const enDescansoExcedente = i > fuerzaHoy && !!titular && !asig;
         // Titular SIN asignación en su propio slot pero que HOY cubre en otro lado
