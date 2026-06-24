@@ -951,16 +951,28 @@ eventosRrhhRouter.get("/rrhh/horas-extra-pendientes", async (req, res) => {
 eventosRrhhRouter.patch("/rrhh/horas-extra/:novedadId/aprobar", async (req, res) => {
   try {
     const { aprobado_por } = req.body;
+    // Transición exclusiva: solo se puede mandar a planilla una HE aún pendiente.
+    // Evita que una HE ya resuelta en efectivo (u otro canal) se pise por reintentos
+    // o sesiones concurrentes → riesgo de doble pago.
     const { rows } = await pool.query(
       `UPDATE novedades_nomina_diarias
        SET horas_extra_estado       = 'aprobado',
            horas_extra_aprobadas_por = $1,
            horas_extra_aprobadas_at  = NOW(),
            updated_at               = NOW()
-       WHERE id = $2 RETURNING id, horas_extra_estado, horas_extra_aprobadas_por`,
+       WHERE id = $2
+         AND (horas_extra_estado IS NULL OR horas_extra_estado = 'pendiente')
+       RETURNING id, horas_extra_estado, horas_extra_aprobadas_por`,
       [aprobado_por ?? "RRHH", req.params.novedadId]
     );
-    if (!rows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+    if (!rows.length) {
+      const ex = await pool.query(
+        `SELECT horas_extra_estado FROM novedades_nomina_diarias WHERE id = $1`,
+        [req.params.novedadId]
+      );
+      if (!ex.rows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+      return res.status(409).json({ error: "Esta HE ya fue resuelta por otro canal. Refresca la lista." });
+    }
 
     // Cerrar la alerta relacionada
     await pool.query(
@@ -988,10 +1000,19 @@ eventosRrhhRouter.patch("/rrhh/horas-extra/:novedadId/rechazar", async (req, res
            horas_extra_aprobadas_at   = NOW(),
            horas_extra               = 0,
            updated_at                = NOW()
-       WHERE id = $2 RETURNING id, horas_extra_estado`,
+       WHERE id = $2
+         AND (horas_extra_estado IS NULL OR horas_extra_estado = 'pendiente')
+       RETURNING id, horas_extra_estado`,
       [rechazado_por ?? "RRHH", req.params.novedadId]
     );
-    if (!rows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+    if (!rows.length) {
+      const ex = await pool.query(
+        `SELECT horas_extra_estado FROM novedades_nomina_diarias WHERE id = $1`,
+        [req.params.novedadId]
+      );
+      if (!ex.rows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+      return res.status(409).json({ error: "Esta HE ya fue resuelta por otro canal. Refresca la lista." });
+    }
 
     await pool.query(
       `UPDATE rrhh_alertas
@@ -1013,6 +1034,8 @@ eventosRrhhRouter.patch("/rrhh/horas-extra/:novedadId/cash", async (req, res) =>
     const { aprobado_por, monto_cash } = req.body;
     const novedadId = req.params.novedadId;
 
+    // Transición exclusiva: solo se paga en efectivo una HE aún pendiente. Evita que
+    // una HE ya enviada a planilla (u otro canal) se pise → riesgo de doble pago.
     const { rows } = await pool.query(
       `UPDATE novedades_nomina_diarias
        SET horas_extra_estado       = 'pagado_efectivo',
@@ -1020,10 +1043,19 @@ eventosRrhhRouter.patch("/rrhh/horas-extra/:novedadId/cash", async (req, res) =>
            horas_extra_aprobadas_at  = NOW(),
            impacto_nomina           = 'pagado_efectivo',
            updated_at               = NOW()
-       WHERE id = $2 RETURNING id, employee_id, fecha, horas_extra, evento_rrhh_id`,
+       WHERE id = $2
+         AND (horas_extra_estado IS NULL OR horas_extra_estado = 'pendiente')
+       RETURNING id, employee_id, fecha, horas_extra, evento_rrhh_id`,
       [aprobado_por ?? "RRHH", novedadId]
     );
-    if (!rows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+    if (!rows.length) {
+      const ex = await pool.query(
+        `SELECT horas_extra_estado FROM novedades_nomina_diarias WHERE id = $1`,
+        [novedadId]
+      );
+      if (!ex.rows.length) return res.status(404).json({ error: "Novedad no encontrada" });
+      return res.status(409).json({ error: "Esta HE ya fue resuelta por otro canal. Refresca la lista." });
+    }
 
     const nov = rows[0];
 

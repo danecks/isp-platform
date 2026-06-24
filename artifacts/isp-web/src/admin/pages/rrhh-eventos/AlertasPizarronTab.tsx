@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity, AlertTriangle, Calendar, CheckCheck, Clock, Loader2,
+  Activity, AlertTriangle, Banknote, Calendar, CheckCheck, Clock, Loader2,
   MapPin, RefreshCw, ThumbsDown, ThumbsUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -84,14 +84,36 @@ export function AlertasPizarronTab() {
     } finally { setLoadingId(null); }
   }
 
+  // Una HE ya resuelta por otro canal (efectivo/planilla/rechazo) devuelve 409. En ese
+  // caso refrescamos para que el operador vea el estado real y no reintente sobre datos viejos.
+  function mensajeError(e: unknown, fallback: string): { title: string; description: string } {
+    const err = e as { status?: number; body?: { error?: string } };
+    if (err?.status === 409) {
+      refetchHE();
+      return { title: "Ya resuelta", description: err.body?.error || "Esta HE ya fue resuelta por otro canal." };
+    }
+    return { title: "Error", description: fallback };
+  }
+
   async function aprobarHE(id: number) {
     setLoadingId(id);
     try {
       await apiPatch(`${API}/rrhh/horas-extra/${id}/aprobar`, { aprobado_por: "RRHH" });
       refetchHE();
       toast({ title: "HE Aprobadas", description: "Horas extra aprobadas correctamente." });
-    } catch {
-      toast({ title: "Error", description: "No se pudo aprobar.", variant: "destructive" });
+    } catch (e) {
+      toast({ ...mensajeError(e, "No se pudo aprobar."), variant: "destructive" });
+    } finally { setLoadingId(null); }
+  }
+
+  async function pagarHEEfectivo(id: number) {
+    setLoadingId(id);
+    try {
+      await apiPatch(`${API}/rrhh/horas-extra/${id}/cash`, { aprobado_por: "RRHH" });
+      refetchHE();
+      toast({ title: "HE en efectivo", description: "Se enviaron al pizarrón de horas extra en efectivo (no van a planilla)." });
+    } catch (e) {
+      toast({ ...mensajeError(e, "No se pudo marcar en efectivo."), variant: "destructive" });
     } finally { setLoadingId(null); }
   }
 
@@ -101,8 +123,8 @@ export function AlertasPizarronTab() {
       await apiPatch(`${API}/rrhh/horas-extra/${id}/rechazar`, { rechazado_por: "RRHH" });
       refetchHE();
       toast({ title: "HE Rechazadas", description: "Las horas extra fueron rechazadas." });
-    } catch {
-      toast({ title: "Error", description: "No se pudo rechazar.", variant: "destructive" });
+    } catch (e) {
+      toast({ ...mensajeError(e, "No se pudo rechazar."), variant: "destructive" });
     } finally { setLoadingId(null); }
   }
 
@@ -301,12 +323,22 @@ export function AlertasPizarronTab() {
                   Rechazar
                 </button>
                 <button
+                  onClick={() => pagarHEEfectivo(he.id)}
+                  disabled={loadingId === he.id}
+                  className="flex items-center gap-1.5 text-[10px] px-2.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/20 rounded-lg transition-colors disabled:opacity-50"
+                  title="Enviar al pizarrón de horas extra en efectivo (no va a planilla)"
+                >
+                  {loadingId === he.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Banknote className="w-3 h-3" />}
+                  En efectivo
+                </button>
+                <button
                   onClick={() => aprobarHE(he.id)}
                   disabled={loadingId === he.id}
                   className="flex items-center gap-1.5 text-[10px] px-2.5 py-1.5 bg-green-600/20 hover:bg-green-600/40 text-green-300 border border-green-500/20 rounded-lg transition-colors disabled:opacity-50"
+                  title="Aprobar para pago en planilla"
                 >
                   {loadingId === he.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ThumbsUp className="w-3 h-3" />}
-                  Aprobar
+                  A planilla
                 </button>
               </div>
             </div>

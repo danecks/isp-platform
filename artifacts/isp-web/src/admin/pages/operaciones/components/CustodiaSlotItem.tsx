@@ -29,6 +29,8 @@ export function CustodiaSlotItem({
   const titularFaltando = (puesto as any).titular_faltando === true;
   const titularCubriendoOtro = (puesto as any).titular_cubriendo_otro === true;
   const titularCubriendoDonde = (puesto as any).titular_cubriendo_donde as string | null;
+  const titularEnSsa = (puesto as any).titular_en_ssa === true;
+  const titularSsaDonde = (puesto as any).titular_ssa_donde as string | null;
   const esRelevo = cubierto && tieneTitular && puesto.agente_id !== puesto.titular_employee_id;
   const descansoExcedente = puesto.descanso_por_ciclo === true;
   const slotVacio = (puesto as any).tiene_slot_vacio === true;
@@ -47,15 +49,19 @@ export function CustodiaSlotItem({
         ? "bg-[#0f1208] border-amber-500/30 hover:border-amber-400/40"
         : cubierto
           ? "bg-[#0f1208] border-amber-500/25 hover:border-amber-400/35"
-          : (titularFaltando || titularCubriendoOtro)
-            ? "bg-[#0c0a16] border-red-500/30 hover:border-red-400/40"
-            : "bg-[#0c0a16] border-red-500/20 hover:border-red-400/35";
+          : titularEnSsa
+            ? "bg-[#0c0716] border-violet-500/30 hover:border-violet-400/40"
+            : (titularFaltando || titularCubriendoOtro)
+              ? "bg-[#0c0a16] border-red-500/30 hover:border-red-400/40"
+              : "bg-[#0c0a16] border-red-500/20 hover:border-red-400/35";
 
   const strip = descansoExcedente
     ? "bg-indigo-400"
     : cubierto
       ? (esRelevo ? "bg-amber-400" : "bg-amber-500")
-      : "bg-red-500 animate-pulse";
+      : titularEnSsa
+        ? "bg-violet-500"
+        : "bg-red-500 animate-pulse";
 
   return (
     <div
@@ -104,6 +110,13 @@ export function CustodiaSlotItem({
               <p className="text-[11px] text-red-400 font-medium truncate">Faltante</p>
               <p className="text-[9px] text-red-400/60 truncate">Titular: {puesto.titular_nombre}</p>
             </div>
+          ) : titularEnSsa ? (
+            <div>
+              <p className="text-[11px] text-violet-300 font-medium truncate">En servicio especial</p>
+              <p className="text-[9px] text-violet-300/60 truncate">
+                {puesto.titular_nombre}{titularSsaDonde ? ` — ${titularSsaDonde}` : ""}
+              </p>
+            </div>
           ) : titularCubriendoOtro ? (
             <div>
               <p className="text-[11px] text-red-400 font-medium truncate">Descubierto</p>
@@ -132,7 +145,7 @@ export function CustodiaSlotItem({
                 <XCircle className="w-3 h-3" /><span>Liberar</span>
               </button>
             )}
-            {tieneTitular && !titularFaltando && onRegistrarFalta && (
+            {tieneTitular && !titularFaltando && !titularEnSsa && onRegistrarFalta && (
               <button
                 onClick={e => { e.stopPropagation(); onRegistrarFalta(puesto, puesto.titular_employee_id!, puesto.titular_nombre!); }}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-red-300/80 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:text-red-300 rounded-md transition-colors"

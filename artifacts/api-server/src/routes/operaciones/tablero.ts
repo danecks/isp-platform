@@ -673,6 +673,41 @@ router.get("/operaciones/tablero", async (req, res) => {
       }
     }
 
+    // Personas que HOY están asignadas a un Servicio Especial (SSA) activo. Si un
+    // titular de custodia está aquí y no tiene asignación en su propio slot, NO debe
+    // mostrarse como presente: su slot queda descubierto con la nota "en servicio
+    // especial" para forzar el relevo. NO es una falta (sigue trabajando, solo en otro
+    // lado), por eso no descuenta. Cubre tanto el agente único (agente_id) como los
+    // multi-agente (ssa_agentes), espejando la detección de pool.ts.
+    const ssaMap = new Map<number, string>();
+    {
+      const { rows: ssaRows } = await pool.query(`
+        SELECT t.employee_id, t.lugar FROM (
+          SELECT sa.employee_id AS employee_id,
+                 COALESCE(c.nombre_comercial, c.nombre, 'Servicio especial') AS lugar
+            FROM ssa_agentes sa
+            JOIN solicitudes_servicio_adicional s2 ON s2.id = sa.ssa_id
+            LEFT JOIN clients c ON c.id = s2.cliente_id
+           WHERE sa.estado IN ('asignado', 'confirmado')
+             AND s2.estado_general NOT IN ('cancelada', 'cerrada')
+             AND $1::date BETWEEN s2.fecha AND COALESCE(s2.fecha_fin, s2.fecha)
+          UNION ALL
+          SELECT s.agente_id AS employee_id,
+                 COALESCE(c.nombre_comercial, c.nombre, 'Servicio especial') AS lugar
+            FROM solicitudes_servicio_adicional s
+            LEFT JOIN clients c ON c.id = s.cliente_id
+           WHERE s.agente_id IS NOT NULL
+             AND s.estado_general NOT IN ('cancelada', 'cerrada')
+             AND $1::date BETWEEN s.fecha AND COALESCE(s.fecha_fin, s.fecha)
+        ) t
+        WHERE t.employee_id IS NOT NULL
+      `, [fechaConsultada]);
+      for (const r of ssaRows) {
+        const eid = Number(r.employee_id);
+        if (!ssaMap.has(eid)) ssaMap.set(eid, r.lugar);
+      }
+    }
+
     // Excepciones del día (Fase 1): { cliente_id -> cantidad }
     const excepcionMap = new Map<number, number>();
     {
@@ -757,6 +792,15 @@ router.get("/operaciones/tablero", async (req, res) => {
         const titularCubriendoDonde = titularCubriendoOtro && titular
           ? cubriendoOtroLadoMap.get(titular.employee_id) ?? null
           : null;
+        // Titular asignado HOY a un Servicio Especial (SSA): su slot de custodia
+        // queda descubierto a la espera de relevo, marcado "en servicio especial"
+        // (no es falta, no descuenta).
+        const titularEnSsa =
+          !!titular && !asig && !titularFaltando && !enDescansoExcedente &&
+          !titularCubriendoOtro && ssaMap.has(titular.employee_id);
+        const titularSsaDonde = titularEnSsa && titular
+          ? ssaMap.get(titular.employee_id) ?? null
+          : null;
 
         let agente_id: number | null = null;
         let agente_nombre: string | null = null;
@@ -778,7 +822,7 @@ router.get("/operaciones/tablero", async (req, res) => {
               es_relevo_dia = true;
             }
           }
-        } else if (titular && !titularFaltando && !enDescansoExcedente && !titularCubriendoOtro) {
+        } else if (titular && !titularFaltando && !enDescansoExcedente && !titularCubriendoOtro && !titularEnSsa) {
           agente_id = titular.employee_id;
           agente_nombre = titular.nombre;
           estado = "cubierto";
@@ -807,6 +851,8 @@ router.get("/operaciones/tablero", async (req, res) => {
           titular_faltando: titularFaltando || false,
           titular_cubriendo_otro: titularCubriendoOtro || false,
           titular_cubriendo_donde: titularCubriendoDonde,
+          titular_en_ssa: titularEnSsa || false,
+          titular_ssa_donde: titularSsaDonde,
           es_relevo_dia,
           arma_id: arma?.arma_id ?? null,
           arma_codigo: arma?.arma_codigo ?? null,
