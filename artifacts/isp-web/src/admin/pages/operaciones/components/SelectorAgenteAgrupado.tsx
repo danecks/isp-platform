@@ -24,6 +24,7 @@ export function SelectorAgenteAgrupado({
   onSelect,
   puestoId,
   zonaId,
+  scrollInterno = true,
 }: {
   fecha: string;
   idsExcluidos?: number[];
@@ -31,6 +32,7 @@ export function SelectorAgenteAgrupado({
   onSelect: (a: AgenteAgrupado) => void;
   puestoId?: number;
   zonaId?: number | null;
+  scrollInterno?: boolean;
 }) {
   const hoy = new Date().toISOString().split("T")[0];
   const esFuturo = fecha > hoy;
@@ -178,7 +180,7 @@ export function SelectorAgenteAgrupado({
           </div>
         )}
 
-        <div className="max-h-64 overflow-y-auto space-y-3 pr-0.5">
+        <div className={`${scrollInterno ? "max-h-64 overflow-y-auto " : ""}space-y-3 pr-0.5`}>
           {gruposRanking.length === 0 && (
             <div className="text-center py-5">
               <UserMinus className="w-5 h-5 text-white/10 mx-auto mb-1" />
@@ -279,7 +281,7 @@ export function SelectorAgenteAgrupado({
         </div>
       )}
 
-      <div className="max-h-64 overflow-y-auto space-y-3 pr-0.5">
+      <div className={`${scrollInterno ? "max-h-64 overflow-y-auto " : ""}space-y-3 pr-0.5`}>
         {grupos.length === 0 && (
           <div className="text-center py-5">
             <UserMinus className="w-5 h-5 text-white/10 mx-auto mb-1" />

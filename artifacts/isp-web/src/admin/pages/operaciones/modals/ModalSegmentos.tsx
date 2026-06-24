@@ -463,6 +463,7 @@ export function ModalSegmentos({
               seleccionado={null}
               puestoId={puesto.id}
               zonaId={puesto.zona_operativa_id}
+              scrollInterno={false}
               onSelect={(a) => {
                 setEmpleadoSel({ id: a.id, nombreCompleto: a.nombre, puesto: a.detalle ?? null, area: null });
                 setCoverGrupo(a.grupo);
