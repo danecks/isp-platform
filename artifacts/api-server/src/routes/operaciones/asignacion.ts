@@ -10,7 +10,7 @@ import {
 } from "./_helpers/titularidad";
 import { registrarImpactoSalarial } from "./_helpers/salarios";
 import { verificarDiaCerrado } from "./_helpers/fechas";
-import { materializarHEDesdeNovedad } from "./_helpers/horas-extra";
+import { materializarHEDesdeNovedad, resolverFaltaEvento, enlazarPagosCashAFalta } from "./_helpers/horas-extra";
 
 import { validarEmpleadoAsignable } from "../../lib/empleado-fecha-ingreso";
 
@@ -536,15 +536,21 @@ router.post("/operaciones/cubrir-externo", async (req, res) => {
         );
 
         // 2) Pago de HE en EFECTIVO del externo (fuera de planilla legal).
+        //    Pareo con la falta del titular del custodio (puesto='Custodio N' + cliente);
+        //    si aún no existe, el enlace se completa al cierre / registrar falta.
+        const eventoFaltaIdC = await resolverFaltaEvento(txC, {
+          fecha: hoy, puestoNombre: `Custodio ${slotNumero}`, clienteNombre,
+        });
         await txC.query(
           `INSERT INTO incentivos_cash_cobertura
              (employee_id, employee_nombre, es_externo, externo_dpi, fecha,
               cliente_id, cliente_nombre, puesto_id, puesto_nombre, segmento_id,
-              tipo, monto, motivo, autorizado_por, metodo_pago, estado)
+              tipo, monto, motivo, autorizado_por, metodo_pago, estado, evento_falta_id)
            VALUES (NULL, $1, TRUE, $2, $3::date, $4, $5, NULL, $6, NULL,
-                   'he_efectivo', $7, $8, $9, 'efectivo', 'pendiente')`,
+                   'he_efectivo', $7, $8, $9, 'efectivo', 'pendiente', $10)`,
           [nombreLimpio, dpiLimpio, hoy, clienteId, clienteNombre,
-           `Custodio ${slotNumero}`, tarifaC, `HE agente externo — custodio ${jornadaC}`, usuario ?? null]
+           `Custodio ${slotNumero}`, tarifaC, `HE agente externo — custodio ${jornadaC}`, usuario ?? null,
+           eventoFaltaIdC]
         );
 
         await txC.query("COMMIT");
@@ -624,16 +630,21 @@ router.post("/operaciones/cubrir-externo", async (req, res) => {
       const segmentoId = segRows[0]?.id ?? null;
 
       // 2) Pago de HE en EFECTIVO del externo (fuera de planilla legal).
+      //    Pareo con la falta del titular del puesto (puesto + cliente); si la falta
+      //    aún no existe, el enlace se completa al cierre / registrar falta.
+      const eventoFaltaIdExt = await resolverFaltaEvento(tx, {
+        fecha: hoy, puestoNombre: puesto.nombre ?? null, clienteNombre: puesto.cliente_nombre ?? null,
+      });
       await tx.query(
         `INSERT INTO incentivos_cash_cobertura
            (employee_id, employee_nombre, es_externo, externo_dpi, fecha,
             cliente_id, cliente_nombre, puesto_id, puesto_nombre, segmento_id,
-            tipo, monto, motivo, autorizado_por, metodo_pago, estado)
+            tipo, monto, motivo, autorizado_por, metodo_pago, estado, evento_falta_id)
          VALUES (NULL, $1, TRUE, $2, $3::date, $4, $5, $6, $7, $8,
-                 'he_efectivo', $9, $10, $11, 'efectivo', 'pendiente')`,
+                 'he_efectivo', $9, $10, $11, 'efectivo', 'pendiente', $12)`,
         [nombreLimpio, dpiLimpio, hoy,
          puesto.cliente_id ?? null, puesto.cliente_nombre ?? null, puestoId, puesto.nombre ?? null, segmentoId,
-         tarifa, `HE agente externo — turno ${jornada}`, usuario ?? null]
+         tarifa, `HE agente externo — turno ${jornada}`, usuario ?? null, eventoFaltaIdExt]
       );
 
       await tx.query("COMMIT");
@@ -1389,6 +1400,18 @@ router.post("/operaciones/liberar", async (req, res) => {
                updated_at             = NOW()`,
             [hoy, emp.id, emp.nombre_completo, puesto.id, puesto.nombre, eventoRrhhId]
           );
+
+          // Late-link: enlaza pagos de HE en efectivo (planilla + externos) de este
+          // puesto+fecha a la falta recién creada (idempotente).
+          if (eventoRrhhId) {
+            await enlazarPagosCashAFalta(pool, {
+              faltaEventoId: eventoRrhhId,
+              fecha: hoy,
+              puestoId: puesto.id,
+              puestoNombre: puesto.nombre,
+              clienteNombre: puesto.cliente_nombre,
+            });
+          }
           logger.info({ agenteId, hoy, eventoRrhhId }, "liberar: incidencia creada como pendiente RRHH");
         }
       } catch (faltaErr) {

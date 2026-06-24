@@ -9,6 +9,7 @@ import {
   sincronizarCustodiasAlCierre,
 } from "./_helpers/cierre-sync";
 import { getActorFromReq } from "../../lib/auth-helpers";
+import { enlazarPagosCashAFalta } from "./_helpers/horas-extra";
 
 const router = Router();
 
@@ -712,6 +713,16 @@ router.post("/operaciones/cierre", async (req, res) => {
           // Las HE creadas por /sustituir tienen genera_horas_extra=FALSE y su propio
           // evento, por lo que no se duplican aquí.
           if (eventoId) {
+            // Late-link: enlaza los pagos de HE en efectivo (planilla + externos)
+            // de este puesto+fecha a la falta recién materializada (idempotente).
+            await enlazarPagosCashAFalta(client, {
+              faltaEventoId: eventoId,
+              fecha: fechaACerrarISO,
+              puestoId: pf.id,
+              puestoNombre: pf.nombre,
+              clienteNombre: pf.cliente_nombre,
+            });
+
             const { rows: coberturasHE } = await client.query(`
               SELECT cs.employee_id, cs.empleado_nombre, cs.horas_calculadas, emp.dpi
               FROM cobertura_segmentos cs

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { resolverFaltaEvento } from "./operaciones/_helpers/horas-extra";
 
 const incentivosRouter = Router();
 
@@ -133,14 +134,24 @@ incentivosRouter.post("/incentivos", async (req, res) => {
       try {
         await client.query("BEGIN");
 
+        // Pareo con la falta del titular: si la falta ya existe (puesto+fecha) se
+        // enlaza de inmediato; si está diferida al cierre, queda NULL y se completa
+        // luego con enlazarPagosCashAFalta (cierre / registrar falta).
+        const eventoFaltaId = await resolverFaltaEvento(client, {
+          fecha: fechaISO,
+          puestoNombre: puestoNombre ?? null,
+          clienteNombre: clienteNombre ?? null,
+        });
+
         const { rows } = await client.query(`
           INSERT INTO incentivos_cash_cobertura
             (employee_id, employee_nombre, fecha,
              cliente_id, cliente_nombre, sede_id,
              puesto_id, puesto_nombre, segmento_id,
              tipo, monto, motivo,
-             autorizado_por, pagado_por, metodo_pago, estado, observaciones)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+             autorizado_por, pagado_por, metodo_pago, estado, observaciones,
+             evento_falta_id)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
           RETURNING *
         `, [
           Number(employeeId), employeeNombre, fechaISO,
@@ -151,6 +162,7 @@ incentivosRouter.post("/incentivos", async (req, res) => {
           tipo, Number(monto), motivo ?? null,
           autorizadoPor ?? null, pagadoPor ?? null,
           metodoPago, estado, observaciones ?? null,
+          eventoFaltaId,
         ]);
 
         await client.query(`

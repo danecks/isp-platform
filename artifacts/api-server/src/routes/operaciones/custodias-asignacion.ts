@@ -8,6 +8,7 @@ import {
 } from "./_helpers/titularidad";
 
 import { validarEmpleadoAsignable } from "../../lib/empleado-fecha-ingreso";
+import { enlazarPagosCashAFalta } from "./_helpers/horas-extra";
 
 const router = Router();
 
@@ -155,6 +156,17 @@ router.post("/operaciones/registrar-falta-custodia", async (req, res) => {
           END,
           updated_at             = NOW()
       `, [fechaHoy, empleadoId, emp[0].nombre_completo, eventoId, `Custodio ${slotNumero}`]);
+
+      // Late-link: enlaza pagos de HE en efectivo (planilla + externos) del custodio
+      // a la falta recién creada (puesto='Custodio N' + cliente, idempotente).
+      if (eventoId) {
+        await enlazarPagosCashAFalta(tx, {
+          faltaEventoId: eventoId,
+          fecha: fechaHoy,
+          puestoNombre: `Custodio ${slotNumero}`,
+          clienteNombre,
+        });
+      }
 
       await tx.query("COMMIT");
     } catch (e) {

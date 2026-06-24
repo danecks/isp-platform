@@ -15,6 +15,10 @@ type FilaHE = {
   fecha_pago: string | null;
   puesto_nombre: string | null;
   cliente_nombre: string | null;
+  falta_evento_id: number | null;
+  titular_id: number | null;
+  titular_nombre: string | null;
+  amonestado: boolean | null;
 };
 
 const fmtFecha = (s: unknown) => {
@@ -187,6 +191,8 @@ export function PanelHEEfectivo() {
                   <th className="text-left font-medium px-3 py-2.5">Fecha</th>
                   <th className="text-left font-medium px-3 py-2.5">Colaborador</th>
                   <th className="text-left font-medium px-3 py-2.5">Puesto / Cliente</th>
+                  <th className="text-left font-medium px-3 py-2.5">Titular ausente</th>
+                  <th className="text-left font-medium px-3 py-2.5">Amonestación</th>
                   <th className="text-left font-medium px-3 py-2.5">Origen</th>
                   <th className="text-right font-medium px-3 py-2.5">Horas extra</th>
                   <th className="text-right font-medium px-3 py-2.5">Monto</th>
@@ -201,6 +207,18 @@ export function PanelHEEfectivo() {
                     <td className="px-3 py-2 text-white/70 whitespace-nowrap">{fmtFecha(r.fecha)}</td>
                     <td className="px-3 py-2 text-white/90 font-medium">{r.empleado_nombre ?? "—"}</td>
                     <td className="px-3 py-2 text-white/50">{puestoCliente(r)}</td>
+                    <td className="px-3 py-2 text-white/70">
+                      {r.titular_nombre
+                        ? <span title={r.falta_evento_id ? `Falta #${r.falta_evento_id}` : undefined}>{r.titular_nombre}</span>
+                        : <span className="text-white/25" title="Aún sin falta enlazada (se enlaza al cerrar el día)">Sin enlazar</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      {r.titular_nombre
+                        ? (r.amonestado
+                          ? <span className="text-[10px] px-1.5 py-0.5 rounded border font-medium text-red-300 bg-red-500/10 border-red-500/20">Amonestado</span>
+                          : <span className="text-[10px] px-1.5 py-0.5 rounded border font-medium text-white/40 bg-white/5 border-white/10">Sin amonestación</span>)
+                        : <span className="text-white/25">—</span>}
+                    </td>
                     <td className="px-3 py-2">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${r.origen === "pizarron" ? "text-cyan-300 bg-cyan-500/10 border-cyan-500/20" : "text-violet-300 bg-violet-500/10 border-violet-500/20"}`}>{origenLabel(r.origen)}</span>
                     </td>

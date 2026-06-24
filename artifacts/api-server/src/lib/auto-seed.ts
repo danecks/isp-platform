@@ -2788,6 +2788,19 @@ Por favor ingresa al sistema o responde para continuar.',
     logger.error({ err }, "Auto-migrate: EXT-01 — error (no bloqueante)");
   }
 
+  // ── INC-FALTA-01: pareo de HE en efectivo con la falta del titular ─────────
+  // Enlace durable entre el pago de HE en efectivo (incentivos_cash_cobertura)
+  // y el evento de falta del titular (eventos_rrhh.id). Aditiva y opcional: se
+  // puebla al crear el pago si la falta ya existe, o se completa solo al cerrar
+  // el día / registrar la falta (late-link idempotente). NULL = aún sin parear.
+  try {
+    await pool.query(`ALTER TABLE incentivos_cash_cobertura ADD COLUMN IF NOT EXISTS evento_falta_id INTEGER`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS inc_cash_evento_falta_idx ON incentivos_cash_cobertura(evento_falta_id)`);
+    logger.info("Auto-migrate: INC-FALTA-01 columna evento_falta_id verificada/creada");
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: INC-FALTA-01 — error (no bloqueante)");
+  }
+
   // ── EXT-02: cobertura por "Agente externo" en CUSTODIAS ───────────────────
   // Las custodias usan custodia_asignacion_diaria (modelo cliente+slot, sin
   // puestos_operativos). Para cubrir un slot con un externo guardamos

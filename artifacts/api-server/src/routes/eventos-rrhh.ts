@@ -609,6 +609,29 @@ eventosRrhhRouter.post("/rrhh/eventos/:id/anular", async (req, res) => {
       logger.warn({ cascErr, id }, "Error al anular evento par en cascada (no bloqueante)");
     }
 
+    // Simetría del pareo HE-efectivo: al anular la falta, soltar el enlace durable
+    // de los pagos de HE en efectivo que apuntaban a ella. El reporte ya filtra por
+    // estado (no mostraría una falta anulada), pero soltar evento_falta_id deja el
+    // pago listo para re-enlazarse si la falta se vuelve a registrar. No bloqueante.
+    try {
+      const evento = rows[0];
+      const esFalta = evento.tipo_evento !== "horas_extra";
+      if (esFalta) {
+        const { rowCount } = await pool.query(
+          `UPDATE incentivos_cash_cobertura
+              SET evento_falta_id = NULL
+            WHERE evento_falta_id = $1`,
+          [evento.id],
+        );
+        if ((rowCount ?? 0) > 0) {
+          logger.info({ faltaId: evento.id, pagosDesenlazados: rowCount },
+            "Pagos HE efectivo desenlazados por anulación de falta");
+        }
+      }
+    } catch (unlinkErr) {
+      logger.warn({ unlinkErr, id }, "Error al desenlazar pagos HE efectivo (no bloqueante)");
+    }
+
     // C-03: Revertir novedad de nómina si no hay otro evento activo del mismo tipo para ese empleado/fecha
     try {
       const evento = rows[0];
@@ -1110,9 +1133,26 @@ eventosRrhhRouter.get("/rrhh/horas-extra-cash", async (req, res) => {
           n.horas_extra_aprobadas_por            AS pagado_por,
           n.horas_extra_aprobadas_at             AS fecha_pago,
           COALESCE(er.puesto_nombre, n.puesto_cubierto_nombre, n.puesto_titular_nombre) AS puesto_nombre,
-          er.cliente_nombre
+          er.cliente_nombre,
+          -- Falta del titular: el evento de HE (er) se enlaza a la falta vía evento_par_id.
+          fa.id                                  AS falta_evento_id,
+          fa.employee_id                         AS titular_id,
+          fa.employee_nombre                     AS titular_nombre,
+          fa.estado                              AS falta_estado,
+          am.amonestado
         FROM novedades_nomina_diarias n
         LEFT JOIN eventos_rrhh er ON er.id = n.evento_rrhh_id
+        LEFT JOIN eventos_rrhh fa
+          ON fa.id = er.evento_par_id AND fa.tipo_evento = 'falta'
+          AND fa.estado NOT IN ('anulado','cancelado')
+        LEFT JOIN LATERAL (
+          SELECT EXISTS (
+            SELECT 1 FROM eventos_rrhh ev
+            WHERE ev.evento_par_id = fa.id
+              AND ev.tipo_evento IN ('amonestacion','acta_administrativa','suspension')
+              AND ev.estado NOT IN ('anulado','cancelado')
+          ) AS amonestado
+        ) am ON TRUE
         WHERE n.horas_extra_estado = 'pagado_efectivo'
           ${whereNov}
 
@@ -1129,8 +1169,38 @@ eventosRrhhRouter.get("/rrhh/horas-extra-cash", async (req, res) => {
           COALESCE(ic.pagado_por, ic.autorizado_por) AS pagado_por,
           ic.created_at                          AS fecha_pago,
           ic.puesto_nombre,
-          ic.cliente_nombre
+          ic.cliente_nombre,
+          -- Falta del titular: enlace durable (evento_falta_id) con fallback por
+          -- puesto+fecha si el pago se registró antes de materializarse la falta.
+          fa.id                                  AS falta_evento_id,
+          fa.employee_id                         AS titular_id,
+          fa.employee_nombre                     AS titular_nombre,
+          fa.estado                              AS falta_estado,
+          am.amonestado
         FROM incentivos_cash_cobertura ic
+        LEFT JOIN LATERAL (
+          SELECT ev.id, ev.employee_id, ev.employee_nombre, ev.estado
+          FROM eventos_rrhh ev
+          WHERE ev.tipo_evento = 'falta'
+            AND ev.estado NOT IN ('anulado','cancelado')
+            AND (
+              ev.id = ic.evento_falta_id
+              OR (ic.evento_falta_id IS NULL
+                  AND DATE(ev.fecha) = ic.fecha
+                  AND ev.puesto_nombre = ic.puesto_nombre
+                  AND COALESCE(ev.cliente_nombre,'') = COALESCE(ic.cliente_nombre,''))
+            )
+          ORDER BY (ev.id = ic.evento_falta_id) DESC, ev.id DESC
+          LIMIT 1
+        ) fa ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT EXISTS (
+            SELECT 1 FROM eventos_rrhh ev
+            WHERE ev.evento_par_id = fa.id
+              AND ev.tipo_evento IN ('amonestacion','acta_administrativa','suspension')
+              AND ev.estado NOT IN ('anulado','cancelado')
+          ) AS amonestado
+        ) am ON TRUE
         WHERE ic.tipo = 'he_efectivo'
           AND ic.estado <> 'cancelado'
           ${whereInc}
