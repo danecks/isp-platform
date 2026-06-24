@@ -18,6 +18,10 @@ import { pool } from "@workspace/db";
 import { count, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { logger } from "./logger";
+import {
+  resolverFaltaEvento,
+  enlazarPagosCashAFalta,
+} from "../routes/operaciones/_helpers/horas-extra";
 
 const SALT_ROUNDS = 10;
 
@@ -6915,6 +6919,70 @@ Por favor ingresa al sistema o responde para continuar.',
     }
   } catch (err) {
     logger.error({ err }, "Auto-migrate: BAJA-SLOT-01 — error (no bloqueante)");
+  }
+
+  // ── HE-CASH-FALTA-BACKFILL-01: enlazar pagos de HE en efectivo antiguos ──────
+  // Los pagos de HE en efectivo (incentivos_cash_cobertura, tipo='he_efectivo')
+  // registrados ANTES del pareo durable quedaron sin `evento_falta_id` y aparecen
+  // como "Sin enlazar" en el panel, aunque su falta ya exista. Backfill único:
+  // por cada grupo puesto+fecha de pagos sin enlazar, resolvemos la falta del
+  // titular y reusamos `enlazarPagosCashAFalta` (idempotente: solo toca filas con
+  // evento_falta_id IS NULL). Marker para no reiterar en cada arranque; aun así es
+  // seguro de re-ejecutar porque ambas operaciones son idempotentes.
+  try {
+    const { rows: markerRows } = await pool.query(
+      `SELECT value FROM system_config WHERE key = 'he_cash_falta_backfill_v1'`
+    );
+    if (!markerRows.length || markerRows[0].value !== "done") {
+      const { rows: pendientes } = await pool.query(`
+        SELECT fecha::text AS fecha,
+               puesto_id,
+               puesto_nombre,
+               cliente_nombre,
+               COUNT(*) AS pagos
+          FROM incentivos_cash_cobertura
+         WHERE tipo = 'he_efectivo'
+           AND estado <> 'cancelado'
+           AND evento_falta_id IS NULL
+           AND puesto_nombre IS NOT NULL
+         GROUP BY fecha, puesto_id, puesto_nombre, cliente_nombre
+      `);
+
+      let gruposEnlazados = 0;
+      let pagosEnlazados = 0;
+      for (const g of pendientes) {
+        const faltaEventoId = await resolverFaltaEvento(pool, {
+          fecha: g.fecha,
+          puestoNombre: g.puesto_nombre,
+          clienteNombre: g.cliente_nombre,
+        });
+        if (!faltaEventoId) continue;
+        const n = await enlazarPagosCashAFalta(pool, {
+          faltaEventoId,
+          fecha: g.fecha,
+          puestoId: g.puesto_id,
+          puestoNombre: g.puesto_nombre,
+          clienteNombre: g.cliente_nombre,
+        });
+        if (n > 0) {
+          gruposEnlazados++;
+          pagosEnlazados += n;
+        }
+      }
+
+      await pool.query(
+        `INSERT INTO system_config (key, value) VALUES ('he_cash_falta_backfill_v1','done')
+         ON CONFLICT (key) DO UPDATE SET value = 'done'`
+      );
+      logger.info(
+        { gruposEnlazados, pagosEnlazados, gruposPendientes: pendientes.length },
+        "Auto-migrate: HE-CASH-FALTA-BACKFILL-01 backfill aplicado"
+      );
+    } else {
+      logger.info("Auto-migrate: HE-CASH-FALTA-BACKFILL-01 verificada (ya aplicada)");
+    }
+  } catch (err) {
+    logger.error({ err }, "Auto-migrate: HE-CASH-FALTA-BACKFILL-01 — error (no bloqueante)");
   }
 
   logger.info("Auto-seed completado");
