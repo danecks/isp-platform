@@ -15,6 +15,7 @@ import { db, incidentsTable, agentAssignmentsTable, employeesTable } from "@work
 import { pool } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { eq, and, desc, gte, count, sql } from "drizzle-orm";
+import { puestoEstadoCoberturaSql } from "../lib/cobertura-puesto";
 
 const portalRouter = Router();
 
@@ -647,7 +648,7 @@ portalRouter.get("/portal/cobertura", requirePortalAuth, async (req, res) => {
         po.turno,
         po.jornada,
         po.horario,
-        po.estado,
+        ${puestoEstadoCoberturaSql("po")}         AS estado,
         cs.nombre                                 AS sede_nombre,
         cs.direccion                              AS sede_direccion,
         oz.nombre                                 AS zona_nombre,

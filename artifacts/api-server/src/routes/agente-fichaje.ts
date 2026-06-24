@@ -5,6 +5,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Readable } from "node:stream";
 import { logger } from "../lib/logger";
 import { TITULARES_UNIFICADOS_CTE } from "./operaciones/_helpers/titularidad";
+import { puestoCubiertoSql, puestoEstadoCoberturaSql } from "../lib/cobertura-puesto";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { getPermisosForUsername } from "../lib/permisos-middleware";
 
@@ -292,7 +293,7 @@ agenteFichajeRouter.get("/agente/scan/:token", async (req, res) => {
       `SELECT po.id, po.nombre, po.cliente_nombre, po.horario,
               po.hora_entrada, po.hora_salida, po.turno, po.jornada, po.novedad
        FROM puestos_operativos po
-       WHERE po.agente_id = $1 AND po.estado = 'cubierto'
+       WHERE po.agente_id = $1 AND ${puestoCubiertoSql("po")}
        LIMIT 1`,
       [emp.employee_id]
     );
@@ -485,8 +486,8 @@ agenteFichajeRouter.post("/agente/scan/:token/incidencia", async (req, res) => {
     // Buscar puesto y cliente actual del agente (para enriquecer la incidencia)
     const { rows: poRows } = await pool.query(
       `SELECT id, nombre, cliente_nombre, cliente_id, sede_id
-       FROM puestos_operativos
-       WHERE agente_id = $1 AND estado = 'cubierto'
+       FROM puestos_operativos po
+       WHERE agente_id = $1 AND ${puestoCubiertoSql("po")}
        LIMIT 1`,
       [emp.employee_id]
     );
@@ -1234,7 +1235,7 @@ agenteFichajeRouter.post("/agente/fichaje", async (req, res) => {
 
     const { rows: poRows } = await pool.query(
       `SELECT po.id FROM puestos_operativos po
-       WHERE po.agente_id = $1 AND po.estado = 'cubierto' LIMIT 1`,
+       WHERE po.agente_id = $1 AND ${puestoCubiertoSql("po")} LIMIT 1`,
       [employeeId]
     );
     const puestoId = poRows[0]?.id ?? null;
@@ -1339,7 +1340,7 @@ agenteFichajeRouter.post("/agente/supervision", async (req, res) => {
     const employeeId = tkRows[0].employee_id;
 
     const { rows: poRows } = await pool.query(
-      `SELECT id FROM puestos_operativos WHERE agente_id = $1 AND estado = 'cubierto' LIMIT 1`,
+      `SELECT id FROM puestos_operativos po WHERE agente_id = $1 AND ${puestoCubiertoSql("po")} LIMIT 1`,
       [employeeId]
     );
     const puestoId = poRows[0]?.id ?? null;
@@ -1514,7 +1515,7 @@ agenteFichajeRouter.post("/agente/ronda-check", async (req, res) => {
     const employeeId = tkRows[0].employee_id;
 
     const { rows: poRows } = await pool.query(
-      `SELECT id FROM puestos_operativos WHERE agente_id = $1 AND estado = 'cubierto' LIMIT 1`,
+      `SELECT id FROM puestos_operativos po WHERE agente_id = $1 AND ${puestoCubiertoSql("po")} LIMIT 1`,
       [employeeId]
     );
     const puestoId = poRows[0]?.id ?? null;
@@ -2541,7 +2542,7 @@ agenteFichajeRouter.get("/agente/tokens", async (req, res) => {
              po.nombre AS puesto_nombre, po.cliente_nombre
       FROM employees e
       LEFT JOIN agente_qr_tokens aqt ON aqt.employee_id = e.id AND aqt.activo = TRUE
-      LEFT JOIN puestos_operativos po ON po.agente_id = e.id AND po.estado = 'cubierto'
+      LEFT JOIN puestos_operativos po ON po.agente_id = e.id AND ${puestoCubiertoSql("po")}
       WHERE e.estado_laboral = 'activo'
       ORDER BY e.nombre_completo
     `);
@@ -2647,9 +2648,12 @@ agenteFichajeRouter.get("/puestos-gps", async (req, res) => {
     // todos los puestos activos — necesario para asignar un teléfono a un puesto
     // aunque hoy esté descubierto.
     const incluirTodos = req.query.todos === "1" || req.query.todos === "true";
-    const filtroEstado = incluirTodos ? `po.activo = TRUE` : `po.estado = 'cubierto'`;
+    const filtroEstado = incluirTodos
+      ? `po.activo = TRUE`
+      : `po.activo = TRUE AND ${puestoCubiertoSql("po")}`;
     const { rows } = await pool.query(`
-      SELECT po.id, po.nombre, po.cliente_nombre, po.agente_nombre, po.estado,
+      SELECT po.id, po.nombre, po.cliente_nombre, po.agente_nombre,
+             ${puestoEstadoCoberturaSql("po")} AS estado,
              pg.id AS gps_id, pg.latitud, pg.longitud, pg.radio_metros, pg.updated_at
       FROM puestos_operativos po
       LEFT JOIN puestos_gps pg ON pg.puesto_id = po.id

@@ -10,6 +10,7 @@ import {
 } from "./_helpers/cierre-sync";
 import { getActorFromReq } from "../../lib/auth-helpers";
 import { enlazarPagosCashAFalta } from "./_helpers/horas-extra";
+import { puestoCubiertoSql } from "../../lib/cobertura-puesto";
 
 const router = Router();
 
@@ -27,11 +28,7 @@ async function contarCoberturaPuestos(fechaISO: string) {
   const { rows: c } = await pool.query(`
     SELECT
       COUNT(*)::int AS total,
-      COUNT(*) FILTER (WHERE
-        EXISTS (SELECT 1 FROM puesto_slots ps
-                WHERE ps.puesto_id = po.id AND ps.activo = TRUE AND ps.empleado_id IS NOT NULL)
-        OR po.agente_id IS NOT NULL
-      )::int AS cubiertos
+      COUNT(*) FILTER (WHERE ${puestoCubiertoSql("po")})::int AS cubiertos
     FROM puestos_operativos po WHERE po.activo = TRUE
   `);
   const { rows: r } = await pool.query(`

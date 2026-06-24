@@ -1,4 +1,5 @@
 - [Operativo en vivo y slots](operativo-slots.md) — el operativo del portal debe leer puesto_slots (modelo de turnos), no solo agente_id legacy; fórmula de ciclo con módulo positivo.
+- [Cobertura de puesto fuente única](cobertura-puesto-fuente-unica.md) — usar lib/cobertura-puesto.ts (slots + fallback agente_id), nunca la columna legacy puestos_operativos.estado para decidir cobertura.
 - [HE por cobertura: detección descanso](he-cobertura-deteccion-descanso.md) — la regla es "HE solo si el que cubre estaba en descanso/vacaciones"; detectarlo con puesto_slots.empleado_id (puesto_titulares vacía, titular_employee_id NULL).
 - [Anular/Reactivar falta dos fuentes](falta-dos-fuentes.md) — el pizarrón lee faltando de slot + eventos_rrhh (UNION); anular/reactivar deben tocar ambas; snapshot del HE par solo si esta op lo anuló.
 - [Anular falta = rollback completo](anular-falta-rollback-completo.md) — anular revierte novedad+segmentos+alertas, no solo slot/evento; neutralizar genera_horas_extra o el cierre regenera HE duplicada; restaurar simétrico (reactivar + rechazo RRHH) vía helper compartido.

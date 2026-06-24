@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { puestoCubiertoSql, puestoEstadoCoberturaSql } from "../lib/cobertura-puesto";
 
 const zonasRouter = Router();
 
@@ -37,8 +38,8 @@ zonasRouter.get("/operaciones/zonas", async (req, res) => {
         COUNT(DISTINCT po.id)::int           AS total_puestos,
         COUNT(DISTINCT po.cliente_id)::int   AS total_clientes,
         COUNT(DISTINCT po.sede_id)::int      AS total_sedes,
-        COUNT(DISTINCT CASE WHEN po.estado = 'cubierto' THEN po.id END)::int AS puestos_cubiertos,
-        COUNT(DISTINCT CASE WHEN po.estado != 'cubierto' AND po.activo = TRUE THEN po.id END)::int AS puestos_descubiertos
+        COUNT(DISTINCT CASE WHEN ${puestoCubiertoSql("po")} THEN po.id END)::int AS puestos_cubiertos,
+        COUNT(DISTINCT CASE WHEN NOT ${puestoCubiertoSql("po")} AND po.activo = TRUE THEN po.id END)::int AS puestos_descubiertos
       FROM operational_zones oz
       LEFT JOIN employees e ON e.id = oz.supervisor_employee_id
       LEFT JOIN puestos_operativos po ON po.zona_operativa_id = oz.id AND po.activo = TRUE
@@ -118,7 +119,7 @@ zonasRouter.get("/operaciones/zonas/:id/detalle", async (req, res) => {
     const { rows: puestos } = await pool.query(
       `SELECT
          po.id, po.nombre, po.cliente_id, po.cliente_nombre,
-         po.estado, po.turno, po.jornada,
+         ${puestoEstadoCoberturaSql("po")} AS estado, po.turno, po.jornada,
          po.agente_id, po.agente_nombre,
          po.titular_employee_id, po.titular_nombre,
          po.sede_id, cs.nombre AS sede_nombre
@@ -324,7 +325,7 @@ zonasRouter.get("/operaciones/puestos-sin-zona", async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT po.id, po.nombre, po.cliente_nombre, po.cliente_id,
-             cs.nombre AS sede_nombre, po.estado
+             cs.nombre AS sede_nombre, ${puestoEstadoCoberturaSql("po")} AS estado
       FROM puestos_operativos po
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
       WHERE po.activo = TRUE AND po.zona_operativa_id IS NULL
@@ -343,7 +344,7 @@ zonasRouter.get("/operaciones/todos-puestos", async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT po.id, po.nombre, po.cliente_nombre, po.cliente_id,
-             po.sede_id, cs.nombre AS sede_nombre, po.estado,
+             po.sede_id, cs.nombre AS sede_nombre, ${puestoEstadoCoberturaSql("po")} AS estado,
              po.zona_operativa_id, oz.nombre AS zona_nombre
       FROM puestos_operativos po
       LEFT JOIN client_sedes cs ON cs.id = po.sede_id
