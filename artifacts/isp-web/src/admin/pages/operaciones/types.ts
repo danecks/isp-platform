@@ -15,6 +15,8 @@ export interface Puesto {
   estado: string; // cubierto | descubierto
   agente_estado_laboral: string | null;
   agente_telefono: string | null;
+  /** Fecha de alta/ingreso del agente que trabaja hoy (YYYY-MM-DD) — para tooltip */
+  agente_fecha_ingreso?: string | null;
   agente_area: string | null;
   notas: string | null;
   orden: number;
@@ -91,6 +93,9 @@ export interface TitularCiclo {
   fecha_inicio_ciclo: string | null;
   trabaja_hoy: boolean;
   descanso_por_ciclo: boolean;
+  /** Datos de contacto para el tooltip (enriquecidos por el backend del tablero) */
+  telefono?: string | null;
+  fecha_ingreso?: string | null;
 }
 
 export interface ClienteBoard {

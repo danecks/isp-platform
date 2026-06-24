@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { AlertTriangle, CheckCircle2, User, UserPlus, Shield, Circle, UserMinus, XCircle, Calendar, AlertCircle, Layers, Moon, Settings2, Repeat, Undo2 } from "lucide-react";
 import { ModalFichaArma } from "@/admin/components/ModalFichaArma";
-import { iniciales, avatarColor } from "../utils";
+import { iniciales, avatarColor, tooltipPersona } from "../utils";
 import { Puesto, PlanFuturo, LABELS_AUSENCIA_FUTURO } from "../types";
 
 export function DroppablePuesto({
@@ -171,7 +171,7 @@ export function DroppablePuesto({
                     </div>
                     <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#0a1628] ${puesto.agente_en_turno ? "bg-green-400" : puesto.apto_horas_extra ? "bg-amber-400" : "bg-slate-500"}`} title={puesto.agente_en_turno ? "En turno ahora" : puesto.apto_horas_extra ? "Descansando · Apto para HE" : "Fuera de turno"} />
                   </div>
-                  <p className="text-[13px] font-semibold text-white/90 truncate">{puesto.agente_nombre}</p>
+                  <p title={tooltipPersona(puesto.agente_nombre, puesto.agente_fecha_ingreso, puesto.agente_telefono)} className="text-[13px] font-semibold text-white/90 truncate">{puesto.agente_nombre}</p>
                 </div>
               ) : cubiertoTitular && activo.nombre ? (
                 <div className="flex items-center gap-1.5">
@@ -181,7 +181,7 @@ export function DroppablePuesto({
                     </div>
                     <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#0a1628] ${puesto.agente_en_turno ? "bg-green-400" : puesto.apto_horas_extra ? "bg-amber-400" : "bg-slate-500"}`} title={puesto.agente_en_turno ? "En turno ahora" : puesto.apto_horas_extra ? "Descansando · Apto para HE" : "Fuera de turno"} />
                   </div>
-                  <p className="text-[13px] font-semibold text-white/90 truncate">{activo.nombre}</p>
+                  <p title={tooltipPersona(activo.nombre, puesto.agente_fecha_ingreso, puesto.agente_telefono)} className="text-[13px] font-semibold text-white/90 truncate">{activo.nombre}</p>
                 </div>
               ) : activoSinCob ? (
                 <div className={`flex items-center gap-2 ${isOver || isAgenteSeleccionado ? "text-primary" : "text-white/20"}`}>
@@ -234,7 +234,7 @@ export function DroppablePuesto({
                     {descansando.nombre ? (
                       <div className="flex items-center gap-1.5">
                         <Moon className="w-3 h-3 text-indigo-400/30 shrink-0" />
-                        <p className="text-[11px] text-white/30 truncate">{descansando.nombre}</p>
+                        <p title={tooltipPersona(descansando.nombre, descansando.fecha_ingreso, descansando.telefono)} className="text-[11px] text-white/30 truncate">{descansando.nombre}</p>
                       </div>
                     ) : <p className="text-[11px] text-white/15">Sin titular</p>}
                   </div>
@@ -443,7 +443,7 @@ export function DroppablePuesto({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1">
-                    <p className="text-[13px] font-semibold text-white/90 truncate">{puesto.agente_nombre}</p>
+                    <p title={tooltipPersona(puesto.agente_nombre, puesto.agente_fecha_ingreso, puesto.agente_telefono)} className="text-[13px] font-semibold text-white/90 truncate">{puesto.agente_nombre}</p>
                     {!esRelevo && <span className="text-[8px] text-green-400/70 font-bold shrink-0">T</span>}
                   </div>
                 </div>

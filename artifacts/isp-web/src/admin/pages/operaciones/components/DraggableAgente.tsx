@@ -2,7 +2,7 @@ import type React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import type { Agente } from "../types";
-import { avatarColor, etiquetaInicioFuturo, iniciales } from "../utils";
+import { avatarColor, etiquetaInicioFuturo, iniciales, tooltipPersona } from "../utils";
 
 export const ESTADO_PUESTO_BADGE: Record<string, { label: string; cls: string }> = {
   relevo_completo:  { label: "Falta",       cls: "bg-red-500/20 text-red-300" },
@@ -58,7 +58,7 @@ export function DraggableAgente({
           {iniciales(agente.nombre_completo)}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-white/90 truncate leading-tight">{agente.nombre_completo}</p>
+          <p title={tooltipPersona(agente.nombre_completo, agente.fecha_ingreso, agente.telefono)} className="text-xs font-semibold text-white/90 truncate leading-tight">{agente.nombre_completo}</p>
           <p className="text-[10px] text-white/35 truncate leading-tight">
             {agente.nombre_puesto_titular
               ? `${agente.nombre_puesto_titular}${agente.cliente_puesto_titular ? ` · ${agente.cliente_puesto_titular}` : ""}`

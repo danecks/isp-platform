@@ -917,6 +917,53 @@ router.get("/operaciones/tablero", async (req, res) => {
       }
     }
 
+    // ── Datos de contacto para el tooltip del pizarrón ──────────────────────────
+    // Nombre + fecha de alta + teléfono de la persona que TRABAJA hoy (titular,
+    // relevo o el titular del ciclo en 24x24) y de la que DESCANSA hoy. El SELECT
+    // principal trae el teléfono del titular (po.agente_id); aquí lo reemplazamos
+    // por el del agente que realmente trabaja hoy (clave: agente_id ya finalizado).
+    {
+      const contactoIds = new Set<number>();
+      for (const p of puestosFinales) {
+        const aid = Number((p as any).agente_id);
+        if (Number.isFinite(aid) && aid > 0) contactoIds.add(aid);
+        const desc = (p as any).par_descansando;
+        const did = desc ? Number(desc.employee_id) : NaN;
+        if (Number.isFinite(did) && did > 0) contactoIds.add(did);
+      }
+      const contactoMap = new Map<number, { telefono: string | null; fecha_ingreso: string | null }>();
+      if (contactoIds.size > 0) {
+        const { rows: cRows } = await pool.query(
+          `SELECT id, telefono, fecha_ingreso::text AS fecha_ingreso
+             FROM employees WHERE id = ANY($1::int[])`,
+          [Array.from(contactoIds)],
+        );
+        for (const r of cRows) {
+          contactoMap.set(Number(r.id), {
+            telefono: r.telefono ?? null,
+            fecha_ingreso: r.fecha_ingreso ?? null,
+          });
+        }
+      }
+      for (const p of puestosFinales) {
+        const aid = Number((p as any).agente_id);
+        const info = Number.isFinite(aid) && aid > 0 ? contactoMap.get(aid) : undefined;
+        // Default a null: si la cobertura es externa (agente_id NULL pero hay
+        // agente_nombre) NO debe heredar el teléfono/fecha del titular del SELECT.
+        // El externo no está en employees, así que se muestra "Sin teléfono".
+        (p as any).agente_telefono = info ? info.telefono : null;
+        (p as any).agente_fecha_ingreso = info ? info.fecha_ingreso : null;
+        const desc = (p as any).par_descansando;
+        if (desc && desc.employee_id) {
+          const di = contactoMap.get(Number(desc.employee_id));
+          if (di) {
+            desc.telefono = di.telefono;
+            desc.fecha_ingreso = di.fecha_ingreso;
+          }
+        }
+      }
+    }
+
     // Agrupar por cliente
     const mapaClientes: Record<string, {
       clienteId: number | null;

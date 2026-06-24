@@ -22,3 +22,10 @@ Mecánica: pre-check fuera de la tx bloquea (409) solo si ya existe un pago exte
 
 ## Jornada/monto autoritativos en backend
 El monto se deriva en el backend desde el puesto (no del body), con la MISMA regla que el frontend: `24h` si `puesto.es_par_24x24===true || /24/` sobre `jornada/turno_nombre/turno`; el `jornada` del body solo es último recurso. Evita drift entre lo mostrado y lo cobrado, y manipulación del monto. Custodios son 12h fijos.
+
+## Datos de contacto del slot en el tablero (tooltip)
+En el tablero de operaciones, `agente_telefono`/`agente_fecha_ingreso` deben atribuirse SIEMPRE al `agente_id` final (quien trabaja hoy, ya resuelto para relevo/24x24), nunca al titular del SELECT (`po.agente_id` → join `e`). El enriquecimiento debe poner ambos campos en `null` por defecto y rellenarlos solo si `agente_id` (>0) mapea a un `employees`.
+
+**Why:** en cobertura externa `agente_id` queda NULL pero `agente_nombre` conserva el nombre del externo; si no se limpia, el campo hereda el teléfono del TITULAR que trae el SELECT y el tooltip/los datos del slot muestran el teléfono de otra persona (fuga/atribución errónea). El externo no está en `employees`, así que lo correcto es "Sin teléfono".
+
+**How to apply:** cualquier consumidor de `agente_telefono` en el slot (tooltip de `DroppablePuesto`, display de teléfono en la sección expandida) asume que el dato es de quien trabaja hoy; mantener el default-null + fill-por-agente_id en `tablero.ts`.

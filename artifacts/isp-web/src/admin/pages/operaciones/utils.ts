@@ -74,6 +74,24 @@ function hoyGuatemalaISO(): string {
   return gt.toISOString().slice(0, 10);
 }
 
+// Anotación (tooltip) con nombre completo, fecha de alta y teléfono de una persona.
+// Se usa al pasar el mouse en los slots del pizarrón y en las tarjetas del pool.
+export function tooltipPersona(
+  nombre?: string | null,
+  fechaIngreso?: string | null,
+  telefono?: string | null,
+): string {
+  const lineas: string[] = [nombre?.trim() || "Sin nombre"];
+  let alta = "Sin fecha de alta";
+  if (fechaIngreso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(fechaIngreso));
+    if (m) alta = `Alta: ${m[3]}/${m[2]}/${m[1]}`;
+  }
+  lineas.push(alta);
+  lineas.push(telefono?.trim() ? `Tel: ${telefono.trim()}` : "Sin teléfono");
+  return lineas.join("\n");
+}
+
 // Etiqueta para empleados con fecha de ingreso futura (no asignables aún).
 export function etiquetaInicioFuturo(fechaIngresoISO?: string | null): string | null {
   if (!fechaIngresoISO) return null;
