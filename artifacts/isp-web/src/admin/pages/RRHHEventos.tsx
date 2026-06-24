@@ -54,8 +54,15 @@ export default function RRHHEventos() {
   const [paginaActiva, setPaginaActiva] = useState<"eventos" | "vacaciones" | "alertas">("eventos");
   const [filtroTipo, setFiltroTipo] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
-  const [busqueda, setBusqueda] = useState("");
+  const [busqueda, setBusqueda] = useState(
+    () => new URLSearchParams(window.location.search).get("empleado") ?? "",
+  );
   const [tabEventos, setTabEventos] = useState<"pendientes" | "historial">("pendientes");
+  // Evento a resaltar al llegar desde un enlace (p. ej. "Cubierto por" en la ficha).
+  const [eventoTarget] = useState<number | null>(() => {
+    const v = new URLSearchParams(window.location.search).get("evento");
+    return v ? Number(v) : null;
+  });
   const [modalAnulacion, setModalAnulacion] = useState<EventoRrhh | null>(null);
   const [modalCausales, setModalCausales] = useState<EventoRrhh | null>(null);
   const [modalNuevo, setModalNuevo] = useState(false);
@@ -111,6 +118,20 @@ export default function RRHHEventos() {
     qc.invalidateQueries({ queryKey: ["rrhh-eventos"] });
     qc.invalidateQueries({ queryKey: ["rrhh-stats"] });
   }
+
+  // Al llegar con ?evento=<id> (enlace desde "Cubierto por"), abrir la pestaña que
+  // lo contiene y desplazar la vista hasta resaltarlo.
+  React.useEffect(() => {
+    if (!eventoTarget || eventos.length === 0) return;
+    const ev = eventos.find((e) => e.id === eventoTarget);
+    if (!ev) return;
+    const pendiente = ev.estado === "pendiente_aprobacion" || ev.estado === "pendiente";
+    setTabEventos(pendiente ? "pendientes" : "historial");
+    const t = setTimeout(() => {
+      document.getElementById(`evento-${eventoTarget}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [eventoTarget, eventos]);
 
   async function handleCrearEvento(data: {
     employeeId: number; tipoEvento: string;
@@ -642,6 +663,7 @@ export default function RRHHEventos() {
                                   onAnular={(ev) => setModalAnulacion(ev)}
                                   compact
                                   label="TITULAR — Descuento"
+                                  highlight={falta.id === eventoTarget}
                                 />
                               </div>
                               <div className="p-2 space-y-2">
@@ -656,6 +678,7 @@ export default function RRHHEventos() {
                                     onAnular={(ev) => setModalAnulacion(ev)}
                                     compact
                                     label="CUBRIENTE — Horas Extra"
+                                    highlight={he.id === eventoTarget}
                                   />
                                 ))}
                               </div>
@@ -673,6 +696,7 @@ export default function RRHHEventos() {
                                 onDescargarActa={handleDescargarActa}
                                 onDescargarAnulacion={handleDescargarAnulacion}
                                 onAnular={(ev) => setModalAnulacion(ev)}
+                                highlight={ev.id === eventoTarget}
                               />
                             ))}
                           </div>

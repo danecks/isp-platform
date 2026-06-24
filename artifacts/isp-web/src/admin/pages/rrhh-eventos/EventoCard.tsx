@@ -17,6 +17,7 @@ export function EventoCard({
   onAnular,
   compact,
   label,
+  highlight,
 }: {
   evento: EventoRrhh;
   onEstadoChange: (id: number, estado: string) => Promise<void>;
@@ -26,6 +27,7 @@ export function EventoCard({
   onAnular: (evento: EventoRrhh) => void;
   compact?: boolean;
   label?: string;
+  highlight?: boolean;
 }) {
   const [showEstadoMenu, setShowEstadoMenu] = useState(false);
   const [loadingEstado, setLoadingEstado] = useState(false);
@@ -47,7 +49,10 @@ export function EventoCard({
   }
 
   return (
-    <div className={`${compact ? "rounded-xl" : "border rounded-2xl"} overflow-hidden transition-colors
+    <div
+      id={`evento-${evento.id}`}
+      className={`${compact ? "rounded-xl" : "border rounded-2xl"} overflow-hidden transition-colors
+      ${highlight ? "ring-2 ring-cyan-400/70 ring-offset-2 ring-offset-[#060e1c]" : ""}
       ${isAnulado
         ? `bg-[#0a0a0a] ${compact ? "" : "border-red-500/15"} opacity-80`
         : `${compact ? "bg-[#0b1525]" : "bg-[#07111f] border-white/8 hover:border-white/15"}`}`}

@@ -145,6 +145,14 @@ export interface OperacionData {
   historialRelevos: HistorialRelevo[];
 }
 
+export interface CoberturaFalta {
+  cubridorId: number | null;
+  cubridorNombre: string;
+  horas: number | null;
+  monto: number | null;
+  heEventoId: number | null;
+}
+
 export interface EventoKPIFront {
   id: number;
   tipoEvento: string;
@@ -154,6 +162,7 @@ export interface EventoKPIFront {
   clienteNombre: string | null;
   puestoNombre: string | null;
   observaciones: string | null;
+  coberturas?: CoberturaFalta[];
 }
 
 export interface KPIDisciplinario {

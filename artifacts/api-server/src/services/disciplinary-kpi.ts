@@ -27,6 +27,18 @@
 
 import { pool } from "@workspace/db";
 
+export interface Cobertura {
+  /** Persona (con HE) que cubrió la falta. employee_id null = agente externo. */
+  cubridorId: number | null;
+  cubridorNombre: string;
+  /** Horas extra de cobertura (planilla). Null si solo se pagó en efectivo sin horas. */
+  horas: number | null;
+  /** Monto pagado en efectivo (Q). Null si la HE fue por planilla. */
+  monto: number | null;
+  /** Evento RRHH de horas_extra correspondiente (para enlazar). Null si solo efectivo. */
+  heEventoId: number | null;
+}
+
 export interface EventoKPI {
   id: number;
   tipoEvento: string;
@@ -37,6 +49,90 @@ export interface EventoKPI {
   puestoNombre: string | null;
   supervisorNombre: string | null;
   observaciones: string | null;
+  /** Solo en faltas: quién(es) la cubrió(eron) y cuánto/cuántas horas. */
+  coberturas?: Cobertura[];
+}
+
+/**
+ * Resuelve, para un conjunto de faltas (eventos_rrhh.id), quién las cubrió.
+ * Usa SOLO los enlaces durables — no el fallback por puesto+fecha — para no atribuir
+ * coberturas a faltas equivocadas:
+ *  - HE de planilla: eventos_rrhh(tipo='horas_extra').evento_par_id → falta.
+ *  - HE en efectivo: incentivos_cash_cobertura(tipo='he_efectivo').evento_falta_id → falta.
+ * Misma persona con horas (planilla) y monto (efectivo) se fusiona en una fila.
+ */
+async function resolverCoberturasPorFalta(
+  faltaIds: number[],
+): Promise<Map<number, Cobertura[]>> {
+  const mapa = new Map<number, Cobertura[]>();
+  if (faltaIds.length === 0) return mapa;
+
+  const { rows } = await pool.query<{
+    falta_id: number;
+    he_evento_id: number | null;
+    cubridor_id: number | null;
+    cubridor_nombre: string | null;
+    horas: string | null;
+    monto: string | null;
+  }>(
+    `SELECT
+        he.evento_par_id   AS falta_id,
+        he.id              AS he_evento_id,
+        he.employee_id     AS cubridor_id,
+        he.employee_nombre AS cubridor_nombre,
+        he.cantidad_horas  AS horas,
+        NULL::numeric      AS monto
+      FROM eventos_rrhh he
+      WHERE he.tipo_evento = 'horas_extra'
+        AND he.evento_par_id = ANY($1::int[])
+        AND he.estado NOT IN ('anulado','cancelado')
+
+      UNION ALL
+
+      SELECT
+        ic.evento_falta_id AS falta_id,
+        NULL::int          AS he_evento_id,
+        ic.employee_id     AS cubridor_id,
+        ic.employee_nombre AS cubridor_nombre,
+        NULL::numeric      AS horas,
+        ic.monto::numeric  AS monto
+      FROM incentivos_cash_cobertura ic
+      WHERE ic.tipo = 'he_efectivo'
+        AND ic.estado <> 'cancelado'
+        AND ic.evento_falta_id = ANY($1::int[])`,
+    [faltaIds],
+  );
+
+  for (const r of rows) {
+    const faltaId = r.falta_id;
+    if (faltaId == null) continue;
+    const nombre = (r.cubridor_nombre ?? "").trim() || "Agente externo";
+    const claveCubridor = r.cubridor_id != null ? `id:${r.cubridor_id}` : `nom:${nombre.toLowerCase()}`;
+    const lista = mapa.get(faltaId) ?? [];
+    const horas = r.horas != null ? Number(r.horas) : null;
+    const monto = r.monto != null ? Number(r.monto) : null;
+
+    // Fusiona horas (planilla) + monto (efectivo) de la misma persona en una fila.
+    const existente = lista.find(
+      (c) => (c.cubridorId != null ? `id:${c.cubridorId}` : `nom:${c.cubridorNombre.toLowerCase()}`) === claveCubridor,
+    );
+    if (existente) {
+      if (horas != null) existente.horas = (existente.horas ?? 0) + horas;
+      if (monto != null) existente.monto = (existente.monto ?? 0) + monto;
+      if (existente.heEventoId == null && r.he_evento_id != null) existente.heEventoId = r.he_evento_id;
+    } else {
+      lista.push({
+        cubridorId: r.cubridor_id,
+        cubridorNombre: nombre,
+        horas,
+        monto,
+        heEventoId: r.he_evento_id,
+      });
+    }
+    mapa.set(faltaId, lista);
+  }
+
+  return mapa;
 }
 
 export interface KPIDisciplinario {
@@ -88,6 +184,17 @@ export async function calcularKPIDisciplinario(employeeId: number): Promise<KPID
     supervisorNombre: r.supervisor_nombre,
     observaciones: r.observaciones,
   }));
+
+  // Enriquecer faltas con quién las cubrió (HE planilla y/o efectivo).
+  const faltaIds = eventos.filter((e) => e.tipoEvento === "falta").map((e) => e.id);
+  if (faltaIds.length > 0) {
+    const coberturasPorFalta = await resolverCoberturasPorFalta(faltaIds);
+    for (const ev of eventos) {
+      if (ev.tipoEvento !== "falta") continue;
+      const cobs = coberturasPorFalta.get(ev.id);
+      if (cobs && cobs.length > 0) ev.coberturas = cobs;
+    }
+  }
 
   const activos = eventos.filter((e) => !e.anulado);
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, type ElementType } from "react";
+import { Link } from "wouter";
   import { QRCodeSVG } from "qrcode.react";
   import { createPortal } from "react-dom";
   import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -550,6 +551,35 @@ export function SeccionDisciplinaria({ empId }: { empId: number }) {
                     </div>
                     {ev.observaciones && (
                       <p className="text-[10px] text-white/30 mt-0.5 truncate">{ev.observaciones}</p>
+                    )}
+                    {ev.coberturas && ev.coberturas.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {ev.coberturas.map((c, i) => {
+                          const detalle = (
+                            <>
+                              Cubierto por <span className="font-semibold text-cyan-200">{c.cubridorNombre}</span>
+                              {c.horas != null && c.horas > 0 && ` · ${c.horas} h`}
+                              {c.monto != null && c.monto > 0 && ` · ${fmtQ(c.monto)} efectivo`}
+                            </>
+                          );
+                          return (
+                            <div key={i} className="flex items-center gap-1.5 text-[10px] text-cyan-300/80">
+                              <UserCheck className="w-3 h-3 shrink-0 text-cyan-400/60" />
+                              {c.heEventoId != null ? (
+                                <Link
+                                  href={`/admin/rrhh/eventos?empleado=${encodeURIComponent(c.cubridorNombre)}&evento=${c.heEventoId}`}
+                                  className="truncate hover:text-cyan-200 hover:underline"
+                                  title="Ver evento de horas extra"
+                                >
+                                  {detalle}
+                                </Link>
+                              ) : (
+                                <span className="truncate">{detalle}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                   <p className="text-[10px] text-white/25 shrink-0">
