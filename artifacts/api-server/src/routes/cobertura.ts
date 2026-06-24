@@ -34,7 +34,7 @@ coberturaRouter.get("/cobertura/diaria", async (req, res) => {
     let sql = `
       SELECT cd.*,
              et.nombre_completo AS titular_nombre_emp,
-             et.telefono    jo    AS titular_telefono,
+             et.telefono        AS titular_telefono,
              ec.nombre_completo AS cobertura_nombre_emp,
              ec.telefono        AS cobertura_telefono
       FROM cobertura_diaria cd
