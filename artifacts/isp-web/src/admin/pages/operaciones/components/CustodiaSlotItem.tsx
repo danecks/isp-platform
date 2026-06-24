@@ -1,5 +1,5 @@
 import { useDroppable } from "@dnd-kit/core";
-import { Truck, XCircle, UserMinus, Moon, MapPin, UserPlus } from "lucide-react";
+import { Truck, XCircle, UserMinus, UserCheck, MapPin, UserPlus } from "lucide-react";
 import { iniciales, avatarColor } from "../utils";
 import { Puesto } from "../types";
 
@@ -32,7 +32,7 @@ export function CustodiaSlotItem({
   const titularEnSsa = (puesto as any).titular_en_ssa === true;
   const titularSsaDonde = (puesto as any).titular_ssa_donde as string | null;
   const esRelevo = cubierto && tieneTitular && puesto.agente_id !== puesto.titular_employee_id;
-  const descansoExcedente = puesto.descanso_por_ciclo === true;
+  const excedenteDisponible = (puesto as any).excedente_disponible === true;
   const slotVacio = (puesto as any).tiene_slot_vacio === true;
   // "Quitar" debe poder remover al titular fijo O a un empleado real asignado solo ese día
   // (asignación diaria sin titularidad, p. ej. una cobertura o un error). Los externos no
@@ -43,8 +43,8 @@ export function CustodiaSlotItem({
 
   const borde = isOver
     ? "border-primary bg-primary/10 shadow-lg shadow-primary/20 scale-[1.02]"
-    : descansoExcedente
-      ? "bg-[#08101a] border-indigo-500/25 hover:border-indigo-400/35"
+    : excedenteDisponible
+      ? "bg-[#08140f] border-emerald-500/25 hover:border-emerald-400/35"
       : esRelevo
         ? "bg-[#0f1208] border-amber-500/30 hover:border-amber-400/40"
         : cubierto
@@ -55,8 +55,8 @@ export function CustodiaSlotItem({
               ? "bg-[#0c0a16] border-red-500/30 hover:border-red-400/40"
               : "bg-[#0c0a16] border-red-500/20 hover:border-red-400/35";
 
-  const strip = descansoExcedente
-    ? "bg-indigo-400"
+  const strip = excedenteDisponible
+    ? "bg-emerald-400"
     : cubierto
       ? (esRelevo ? "bg-amber-400" : "bg-amber-500")
       : titularEnSsa
@@ -73,17 +73,17 @@ export function CustodiaSlotItem({
         <div className={`w-1 self-stretch rounded-full shrink-0 ${strip}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-1">
-            <Truck className={`w-3 h-3 shrink-0 ${cubierto ? "text-amber-400" : descansoExcedente ? "text-indigo-400/60" : "text-white/30"}`} />
+            <Truck className={`w-3 h-3 shrink-0 ${cubierto ? "text-amber-400" : excedenteDisponible ? "text-emerald-400/60" : "text-white/30"}`} />
             <p className="text-[10px] font-semibold text-white/50">Custodio {puesto.slot_numero}</p>
             {puesto.arma_codigo && (
               <span className="text-[8px] bg-blue-500/10 border border-blue-500/20 text-blue-300/70 px-1 py-0.5 rounded font-mono">
                 {puesto.arma_codigo}
               </span>
             )}
-            {descansoExcedente && (
-              <span className="text-[8px] px-1 py-0.5 bg-indigo-500/15 border border-indigo-500/25 rounded text-indigo-300/80 font-bold ml-auto">DESCANSO</span>
+            {excedenteDisponible && (
+              <span className="text-[8px] px-1 py-0.5 bg-emerald-500/15 border border-emerald-500/25 rounded text-emerald-300/80 font-bold ml-auto">DISPONIBLE</span>
             )}
-            {esRelevo && !descansoExcedente && (
+            {esRelevo && !excedenteDisponible && (
               <span className="text-[8px] px-1 py-0.5 bg-amber-500/15 border border-amber-500/25 rounded text-amber-300/80 font-bold ml-auto">REL</span>
             )}
           </div>
@@ -100,9 +100,9 @@ export function CustodiaSlotItem({
                 )}
               </div>
             </div>
-          ) : descansoExcedente && puesto.titular_nombre ? (
-            <div className="flex items-center gap-1.5 text-indigo-300/70">
-              <Moon className="w-3 h-3 shrink-0" />
+          ) : excedenteDisponible && puesto.titular_nombre ? (
+            <div className="flex items-center gap-1.5 text-emerald-300/70">
+              <UserCheck className="w-3 h-3 shrink-0" />
               <p className="text-[11px] truncate">{puesto.titular_nombre}</p>
             </div>
           ) : titularFaltando ? (
@@ -172,7 +172,7 @@ export function CustodiaSlotItem({
                 <MapPin className="w-3 h-3" /><span>Ruta</span>
               </button>
             )}
-            {onAgenteExterno && !cubierto && !descansoExcedente && (
+            {onAgenteExterno && !cubierto && !excedenteDisponible && (
               <button
                 onClick={e => { e.stopPropagation(); onAgenteExterno(puesto); }}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-teal-300/80 bg-teal-500/10 border border-teal-500/25 hover:bg-teal-500/20 hover:text-teal-300 rounded-md transition-colors"

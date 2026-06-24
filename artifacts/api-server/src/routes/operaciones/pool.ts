@@ -162,15 +162,19 @@ router.get("/operaciones/pool", async (req, res) => {
           WHEN custodia_cob.employee_id IS NOT NULL
                AND e.estado_laboral = 'activo'
                THEN 'en_puesto'
-          -- EN_PUESTO: agente titular custodia activo
+          -- EN_PUESTO: agente titular custodia activo (dentro de la demanda del día).
+          -- Si su slot supera la fuerza pedida hoy, NO se necesita → cae a 'disponible'
+          -- (puede cubrir otro puesto a pago de día normal, sin HE).
           WHEN custodia_tit.employee_id IS NOT NULL
                AND e.estado_laboral = 'activo'
                AND ev_falta.tiene_falta IS NULL
+               AND custodia_tit.slot_numero <= custodia_tit.fuerza_hoy
                THEN 'en_puesto'
-          -- FALTANDO: titular custodia con falta hoy
+          -- FALTANDO: titular custodia con falta hoy (solo si se le necesitaba hoy)
           WHEN custodia_tit.employee_id IS NOT NULL
                AND e.estado_laboral = 'activo'
                AND ev_falta.tiene_falta IS NOT NULL
+               AND custodia_tit.slot_numero <= custodia_tit.fuerza_hoy
                THEN 'faltando'
           -- EN_PUESTO: agente titular y el ciclo confirma que HOY trabaja.
           WHEN (po.agente_id IS NOT NULL OR titular_po.id IS NOT NULL)
@@ -232,9 +236,16 @@ router.get("/operaciones/pool", async (req, res) => {
       ) titular_po ON TRUE
       LEFT JOIN turnos t ON t.id = titular_po.tipo_turno_id
       LEFT JOIN LATERAL (
-        SELECT ct.employee_id
+        SELECT ct.employee_id, ct.cliente_id, ct.slot_numero,
+               COALESCE(exc.cantidad, fs.cantidad_agentes, 0) AS fuerza_hoy
         FROM custodia_titulares ct
+        LEFT JOIN custodia_fuerza_semanal fs
+          ON fs.cliente_id = ct.cliente_id
+         AND fs.dia_semana = EXTRACT(DOW FROM $1::date)::int
+        LEFT JOIN custodia_excepciones exc
+          ON exc.cliente_id = ct.cliente_id AND exc.fecha = $1::date
         WHERE ct.employee_id = e.id AND ct.activo = TRUE
+        ORDER BY ct.slot_numero
         LIMIT 1
       ) custodia_tit ON TRUE
       LEFT JOIN LATERAL (

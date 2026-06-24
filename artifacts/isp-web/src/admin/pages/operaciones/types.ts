@@ -39,6 +39,7 @@ export interface Puesto {
   horas_trabajo: number | null;
   horas_descanso: number | null;
   descanso_por_ciclo?: boolean;
+  excedente_disponible?: boolean;
   /** Vacaciones activas del titular en la fecha consultada */
   titular_vac_tipo?: "vacaciones" | "vacaciones_trabajadas" | null;
   titular_vac_inicio?: string | null;

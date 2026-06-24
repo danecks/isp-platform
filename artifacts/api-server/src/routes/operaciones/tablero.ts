@@ -794,12 +794,14 @@ router.get("/operaciones/tablero", async (req, res) => {
           Number(asig.employee_id) === titular.employee_id;
         const asignadoFaltando =
           asignadoEsTitularDeEsteSlot && custodiaFaltaSet.has(Number(asig.employee_id));
-        // Slot por sobre la demanda del día: si hay titular fijo, cuenta como descanso.
-        const enDescansoExcedente = i > fuerzaHoy && !!titular && !asig;
+        // Slot por sobre la demanda del día: el titular fijo NO se necesita hoy →
+        // queda DISPONIBLE (no descanso). Puede cubrir otros puestos a pago de día
+        // normal y aparece en el pool de disponibles.
+        const excedenteDisponible = i > fuerzaHoy && !!titular && !asig;
         // Titular SIN asignación en su propio slot pero que HOY cubre en otro lado
         // → su slot de origen queda descubierto (no puede estar en dos lugares).
         const titularCubriendoOtro =
-          !!titular && !asig && !titularFaltando && !enDescansoExcedente &&
+          !!titular && !asig && !titularFaltando && !excedenteDisponible &&
           cubriendoOtroLadoMap.has(titular.employee_id);
         const titularCubriendoDonde = titularCubriendoOtro && titular
           ? cubriendoOtroLadoMap.get(titular.employee_id) ?? null
@@ -808,7 +810,7 @@ router.get("/operaciones/tablero", async (req, res) => {
         // queda descubierto a la espera de relevo, marcado "en servicio especial"
         // (no es falta, no descuenta).
         const titularEnSsa =
-          !!titular && !asig && !titularFaltando && !enDescansoExcedente &&
+          !!titular && !asig && !titularFaltando && !excedenteDisponible &&
           !titularCubriendoOtro && ssaMap.has(titular.employee_id);
         const titularSsaDonde = titularEnSsa && titular
           ? ssaMap.get(titular.employee_id) ?? null
@@ -834,7 +836,7 @@ router.get("/operaciones/tablero", async (req, res) => {
               es_relevo_dia = true;
             }
           }
-        } else if (titular && !titularFaltando && !enDescansoExcedente && !titularCubriendoOtro && !titularEnSsa) {
+        } else if (titular && !titularFaltando && !excedenteDisponible && !titularCubriendoOtro && !titularEnSsa) {
           agente_id = titular.employee_id;
           agente_nombre = titular.nombre;
           estado = "cubierto";
@@ -873,7 +875,8 @@ router.get("/operaciones/tablero", async (req, res) => {
           arma_serie: arma?.arma_serie ?? null,
           titulares: [],
           es_par_24x24: false,
-          descanso_por_ciclo: enDescansoExcedente,
+          descanso_por_ciclo: false,
+          excedente_disponible: excedenteDisponible,
           es_inicio_hoy: false,
           tiene_slot_vacio: !titular,
           jornada: "12h",

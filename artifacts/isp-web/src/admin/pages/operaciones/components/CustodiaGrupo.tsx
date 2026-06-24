@@ -25,10 +25,10 @@ export function CustodiaGrupo({
 
   const ordenados = [...slots].sort((a, b) => (a.slot_numero ?? 0) - (b.slot_numero ?? 0));
   const cubiertos = ordenados.filter(
-    (s) => s.estado === "cubierto" && (!!s.agente_id || (s as any).es_externo === true) && !s.descanso_por_ciclo,
+    (s) => s.estado === "cubierto" && (!!s.agente_id || (s as any).es_externo === true) && !(s as any).excedente_disponible,
   ).length;
-  const operativos = ordenados.filter((s) => !s.descanso_por_ciclo).length;
-  const descansoN = ordenados.filter((s) => s.descanso_por_ciclo).length;
+  const operativos = ordenados.filter((s) => !(s as any).excedente_disponible).length;
+  const disponiblesN = ordenados.filter((s) => (s as any).excedente_disponible).length;
 
   return (
     <div className="rounded-xl border border-amber-500/15 bg-[#0a0f15] overflow-hidden">
@@ -37,9 +37,9 @@ export function CustodiaGrupo({
         <p className="text-[10px] font-bold text-amber-200/80 flex-1">
           {cubiertos} de {operativos} cubiertos
         </p>
-        {descansoN > 0 && (
-          <span className="text-[9px] text-indigo-300/70 font-semibold">
-            +{descansoN} descanso
+        {disponiblesN > 0 && (
+          <span className="text-[9px] text-emerald-300/70 font-semibold">
+            +{disponiblesN} disponible
           </span>
         )}
       </div>

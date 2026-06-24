@@ -81,9 +81,10 @@ export function ClienteColumna({
   const puestosRegulares = cliente.puestos.filter((p) => !p.es_custodia);
   const cubiertos      = cliente.puestos.filter(esPuestoCubierto).length;
   const descansoCicloN = cliente.puestos.filter((p) => p.descanso_por_ciclo === true && !esPuestoCubierto(p)).length;
-  const descubiertoN   = cliente.puestos.filter((p) => !esPuestoCubierto(p) && !p.descanso_por_ciclo).length;
+  const disponibleExcN = cliente.puestos.filter((p) => (p as any).excedente_disponible === true && !esPuestoCubierto(p)).length;
+  const descubiertoN   = cliente.puestos.filter((p) => !esPuestoCubierto(p) && !p.descanso_por_ciclo && !(p as any).excedente_disponible).length;
   const total          = cliente.puestos.length;
-  const pct         = total > 0 ? Math.round(((cubiertos + descansoCicloN) / total) * 100) : 0;
+  const pct         = total > 0 ? Math.round(((cubiertos + descansoCicloN + disponibleExcN) / total) * 100) : 0;
   const colorBarra  = descubiertoN > 0 ? "bg-red-500" : pct === 100 ? "bg-green-500" : "bg-indigo-500";
 
   const borderClass = resaltado
@@ -155,6 +156,7 @@ export function ClienteColumna({
             <p className="text-[10px] text-white/35 mt-0.5">
               {cubiertos}/{total} cubiertos
               {descansoCicloN > 0 && <span className="ml-1 text-indigo-400/50">· {descansoCicloN} en ciclo</span>}
+              {disponibleExcN > 0 && <span className="ml-1 text-emerald-400/50">· {disponibleExcN} disponible</span>}
               {descubiertoN > 0 && <span className="ml-1 text-red-400/60">· {descubiertoN} descubiertos</span>}
             </p>
           </button>
