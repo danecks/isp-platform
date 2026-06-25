@@ -1,6 +1,6 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Truck, XCircle, UserMinus, UserCheck, MapPin, UserPlus } from "lucide-react";
-import { iniciales, avatarColor } from "../utils";
+import { iniciales, avatarColor, tooltipPersona } from "../utils";
 import { Puesto } from "../types";
 
 export function CustodiaSlotItem({
@@ -94,7 +94,12 @@ export function CustodiaSlotItem({
                 {iniciales(puesto.agente_nombre)}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[12px] font-semibold text-white/90 truncate">{puesto.agente_nombre}</p>
+                <p
+                  title={tooltipPersona(puesto.agente_nombre, puesto.agente_fecha_ingreso, puesto.agente_telefono)}
+                  className="text-[12px] font-semibold text-white/90 truncate"
+                >
+                  {puesto.agente_nombre}
+                </p>
                 {esRelevo && puesto.titular_nombre && (
                   <p className="text-[9px] text-amber-400/70 truncate">Titular: {puesto.titular_nombre}</p>
                 )}

@@ -945,6 +945,12 @@ router.get("/operaciones/tablero", async (req, res) => {
         const did = desc ? Number(desc.employee_id) : NaN;
         if (Number.isFinite(did) && did > 0) contactoIds.add(did);
       }
+      // Los slots de custodia también necesitan el contacto del agente que
+      // trabaja hoy (por agente_id). Un externo (agente_id NULL) no hereda nada.
+      for (const cs of custodiaSlots) {
+        const aid = Number((cs as any).agente_id);
+        if (Number.isFinite(aid) && aid > 0) contactoIds.add(aid);
+      }
       const contactoMap = new Map<number, { telefono: string | null; fecha_ingreso: string | null }>();
       if (contactoIds.size > 0) {
         const { rows: cRows } = await pool.query(
@@ -975,6 +981,14 @@ router.get("/operaciones/tablero", async (req, res) => {
             desc.fecha_ingreso = di.fecha_ingreso;
           }
         }
+      }
+      // Mismo enriquecimiento para custodia: el externo (agente_id NULL) queda
+      // con teléfono/fecha en null → la anotación muestra "Sin teléfono".
+      for (const cs of custodiaSlots) {
+        const aid = Number((cs as any).agente_id);
+        const info = Number.isFinite(aid) && aid > 0 ? contactoMap.get(aid) : undefined;
+        (cs as any).agente_telefono = info ? info.telefono : null;
+        (cs as any).agente_fecha_ingreso = info ? info.fecha_ingreso : null;
       }
     }
 
