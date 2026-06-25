@@ -12,6 +12,7 @@
 - [Typecheck baseline api-server](typecheck-baseline.md) — el typecheck del api-server está rojo de base (no es regresión tuya); cómo distinguir errores propios.
 - [Mecánica build de deployment](deploy-build-mecanica.md) — el deploy corre solo el build por artefacto (no typecheck raíz); fallo sin error de compilación = promote/health-check transitorio, re-publicar.
 - [Publicación móvil OTA/APK](mobile-release-publishing.md) — se publica por tags de git en GitHub Actions; APK release solo con tag `mobile-v*` (dispatch no crea release); el sandbox no puede pushear.
+- [OTA capgo autoUpdate usa POST](ota-capgo-autoupdate-post.md) — la app no se actualizaba sola porque capgo consulta el manifest con POST (no GET) y la ruta daba 404; fix solo-servidor responde el POST y arregla teléfonos instalados sin reinstalar.
 - [Descarga APK desde ispsa.net](descarga-apk-ispsa.md) — /api/descarga-apk sirve el APK desde Object Storage propio (espejo perezoso desde GitHub), no por redirect; resuelve última versión sola.
 - [Datos de contrato fuera del schema](datos-contrato-fuera-schema.md) — estado_civil/sexo/nit/direccion/etc. se persisten con UPDATE crudo (POST y PATCH); editar sin prellenar desde GET /:id los borra (""→NULL).
 - [Atribución de rondas QR](rondas-atribucion.md) — los eventos de ronda se atribuyen por employee_id (agente), no por user_id web; reportes resuelven nombre con COALESCE(u.nombre, emp.nombre_completo).
@@ -71,4 +72,7 @@
 - [Agregar agente fuerza puesto de sesión](agregar-agente-fuerza-puesto-sesion.md) — el "Agregar agente" del kiosko móvil debe fichar al puesto de la sesión (sesion_fichaje_id+tracking_token_sesion), no a la titularidad del agente, o no aparece en la lista.
 - [Cubierto por en ficha (reverso falta→cobertura)](ficha-falta-cubierto-por.md) — historial disciplinario muestra quién cubrió cada falta usando SOLO enlaces durables (evento_par_id / evento_falta_id), no el fallback puesto+fecha.
 - [Réplica de prod atrasada e IDs por entorno](prod-replica-lag-e-ids.md) — la réplica read-only de prod puede ir ~1 día atrasada (verificar MAX(fecha) antes de concluir "no hay datos hoy"); IDs de cliente difieren dev↔prod (VAS VILLA NUEVA=83 dev/73 prod), resolver por nombre.
+- [Kiosco solicitudes 500 por fecha no-ISO](kiosco-fecha-date-invalida.md) — fecha_nacimiento del kiosco/DPI llega DD/MM/YYYY o inválida; insertar cruda en columna DATE da 500; normalizar a ISO o null, en POST y PATCH.
+- [OTA capgo bare specifier](ota-plugin-bare-specifier.md) — el plugin capgo debe ir empaquetado (import literal + dep en isp-web); si queda pelado: "failed to resolve module specifier" + revert porque notifyAppReady nunca corre.
 - [Custodia excedente del día → DISPONIBLE](custodia-excedente-disponible.md) — titular que sobra un día (titulares > fuerza pedida) va a DISPONIBLE (día normal), no DESCANSO; umbral=demanda del día; pool exige slot<=fuerza_hoy; alinear tablero y pool.
+- [Reanudación no anula puesto_id](reanudacion-no-anula-puesto.md) — en iniciar-turno, re-escaneo de puesto fijo NO debe migrar a custodia; aplicaCustodia solo si custodiaHoy o fichaje ya custodia, o borra puesto_id y lo saca de "en servicio".
