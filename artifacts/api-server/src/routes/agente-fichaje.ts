@@ -820,9 +820,17 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
         custodiaHoy = cadRows[0];
       }
 
+      // Reanudar como CUSTODIA solo si el agente realmente es custodia hoy
+      // (titular o asignación del día) o si el fichaje abierto YA era de custodia
+      // (puesto_id NULL). Un fichaje de PUESTO FIJO (puesto_id != NULL) NO debe
+      // migrarse a custodia: hacerlo le borraba el puesto_id y lo sacaba de las
+      // listas de "en servicio" (portal + kiosco multi-agente), que filtran por
+      // puesto_id. Antes aplicaCustodia caía a fichaje.cliente_id y se disparaba
+      // para cualquier re-escaneo de puesto fijo. [PUESTO-NULL-01]
+      const esFichajeCustodia = fichaje.puesto_id == null;
       const targetClienteId = custodiaHoy ? Number(custodiaHoy.cliente_id) : (fichaje.cliente_id ?? null);
       const targetClienteNombre = custodiaHoy?.cliente_nombre ?? null;
-      const aplicaCustodia = targetClienteId !== null;
+      const aplicaCustodia = (custodiaHoy != null || esFichajeCustodia) && targetClienteId !== null;
 
       if (aplicaCustodia) {
         const nuevoToken = randomBytes(32).toString("hex");
