@@ -31,6 +31,40 @@ function normalizarNombre(str: string): string {
     .trim();
 }
 
+/**
+ * Normaliza una fecha a formato ISO (YYYY-MM-DD) apto para una columna DATE.
+ * El kiosco (y la lectura del DPI por IA) puede mandar fechas en formato
+ * guatemalteco DD/MM/YYYY o DD-MM-YYYY, o valores inválidos. Para que el INSERT
+ * nunca reviente con "invalid input syntax for type date", convertimos lo que
+ * se pueda y devolvemos null si la fecha no es válida (en vez de propagar 500).
+ */
+function normalizarFecha(val: unknown): string | null {
+  if (val == null) return null;
+  const s = String(val).trim();
+  if (s === "") return null;
+
+  let y: number, m: number, d: number;
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const dmy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (iso) {
+    y = +iso[1]; m = +iso[2]; d = +iso[3];
+  } else if (dmy) {
+    d = +dmy[1]; m = +dmy[2]; y = +dmy[3];
+  } else {
+    return null;
+  }
+
+  if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1900 || y > 2200) return null;
+  // Verificación real del calendario (descarta 31/02, etc.)
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+    return null;
+  }
+  const mm = String(m).padStart(2, "0");
+  const dd = String(d).padStart(2, "0");
+  return `${y}-${mm}-${dd}`;
+}
+
 const pinRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 8,
@@ -318,7 +352,7 @@ solicitudesEmpleoRouter.post("/solicitudes-empleo", async (req: Request, res: Re
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
         RETURNING id, created_at
       `, [
-        normalizarNombre(nombre_completo), fecha_nacimiento || null, dpi || null, genero || null, estado_civil || null,
+        normalizarNombre(nombre_completo), normalizarFecha(fecha_nacimiento), dpi || null, genero || null, estado_civil || null,
         telefono || null, telefono_emergencia || null, nombre_contacto_emergencia || null,
         correo || null, direccion || null, municipio || null, departamento || null,
         nombre_padre || null, nombre_madre || null, num_dependientes || 0,
@@ -543,7 +577,7 @@ solicitudesEmpleoRouter.patch("/solicitudes-empleo/:id", async (req: Request, re
       if (val == null || val === "") val = null;
       else { const n = parseFloat(String(val)); val = isNaN(n) ? null : n; }
     } else if (tipo === "date") {
-      val = val == null || val === "" ? null : String(val);
+      val = normalizarFecha(val);
     }
     params.push(val);
     sets.push(`${campo} = $${params.length}`);
