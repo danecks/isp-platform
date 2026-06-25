@@ -1,3 +1,4 @@
+- [Deploy: escuchar antes de migrar](deploy-listen-antes-de-migrar.md) — index.ts del api-server debe app.listen ANTES de runAutoMigrations/seed; la cadena de migraciones (~1min) bloqueaba el bind y el healthcheck del deploy daba 500.
 - [Operativo en vivo y slots](operativo-slots.md) — el operativo del portal debe leer puesto_slots (modelo de turnos), no solo agente_id legacy; fórmula de ciclo con módulo positivo.
 - [Cobertura de puesto fuente única](cobertura-puesto-fuente-unica.md) — usar lib/cobertura-puesto.ts (slots + fallback agente_id), nunca la columna legacy puestos_operativos.estado para decidir cobertura.
 - [HE por cobertura: detección descanso](he-cobertura-deteccion-descanso.md) — la regla es "HE solo si el que cubre estaba en descanso/vacaciones"; detectarlo con puesto_slots.empleado_id (puesto_titulares vacía, titular_employee_id NULL).
