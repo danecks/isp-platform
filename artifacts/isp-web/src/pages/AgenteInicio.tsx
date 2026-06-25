@@ -887,6 +887,7 @@ export default function AgenteInicio() {
       setAccionLoading(true);
       try {
         const dev = leerDeviceCreds();
+        const turno = turnoActivoRef.current;
         const r = await fetch(`${API}/agente/iniciar-turno`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -894,6 +895,10 @@ export default function AgenteInicio() {
             qr_token: token,
             device_uuid: dev?.uuid ?? null,
             device_token: dev?.token ?? null,
+            // Forzar el check-in AL PUESTO de esta sesión (relevos/coberturas que
+            // no son titulares de este puesto igual entran en servicio aquí).
+            sesion_fichaje_id: turno?.fichaje_id ?? null,
+            tracking_token_sesion: turno?.tracking_token ?? null,
           }),
         });
         const data = await r.json().catch(() => ({}));

@@ -700,7 +700,8 @@ agenteFichajeRouter.get("/agente/puesto-del-dia", async (req, res) => {
 // y registra el inicio de turno del día. GPS se valida contra el puesto si aplica.
 // Si vienen device_uuid+device_token (modo kiosco), se valida que el agente pertenezca al puesto vinculado.
 agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
-  const { qr_token, latitud, longitud, precision_metros, device_uuid, device_token } = req.body ?? {};
+  const { qr_token, latitud, longitud, precision_metros, device_uuid, device_token,
+          sesion_fichaje_id, tracking_token_sesion } = req.body ?? {};
   if (!qr_token) return res.status(400).json({ error: "qr_token_requerido" });
 
   // Modo kiosco: validar device si viene
@@ -883,6 +884,79 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       });
     }
 
+    // Modo "agregar agente al puesto" (kiosko multi-agente): si llega una sesión
+    // de puesto abierta + su tracking token, forzamos el check-in AL PUESTO de
+    // esa sesión, sin importar la titularidad propia del agente. Esto cubre
+    // relevos/coberturas que físicamente trabajan en este puesto. Sin esto, el
+    // agente se fichaba en SU propio puesto y no aparecía en la lista de
+    // "agentes en servicio" (que filtra por el puesto de la sesión).
+    let sesionPuesto: {
+      puesto_id: number;
+      cliente_id: number | null;
+      cliente_nombre: string | null;
+      puesto_nombre: string;
+      horario: string | null;
+      hora_entrada: string | null;
+      hora_salida: string | null;
+      turno: string | null;
+      jornada: string | null;
+      gps: { latitud: number; longitud: number; radio_metros: number } | null;
+    } | null = null;
+    if (sesion_fichaje_id && tracking_token_sesion) {
+      const sid = Number(sesion_fichaje_id);
+      if (Number.isFinite(sid)) {
+        const { rows: sRows } = await pool.query(
+          `SELECT af.puesto_id, af.tracking_token_hash, af.turno_cerrado_en,
+                  po.cliente_id, po.cliente_nombre, po.nombre AS puesto_nombre,
+                  po.horario, po.hora_entrada, po.hora_salida, po.turno, po.jornada
+             FROM agente_fichajes af
+             JOIN puestos_operativos po ON po.id = af.puesto_id
+            WHERE af.id = $1 AND af.tipo = 'inicio_turno'`,
+          [sid]
+        );
+        const s = sRows[0];
+        if (
+          s && s.puesto_id && !s.turno_cerrado_en &&
+          s.tracking_token_hash &&
+          s.tracking_token_hash === hashToken(String(tracking_token_sesion))
+        ) {
+          let gps: { latitud: number; longitud: number; radio_metros: number } | null = null;
+          const { rows: gpsRows } = await pool.query(
+            `SELECT latitud, longitud, radio_metros FROM puestos_gps WHERE puesto_id = $1`,
+            [s.puesto_id]
+          );
+          if (gpsRows[0]) {
+            gps = {
+              latitud: Number(gpsRows[0].latitud),
+              longitud: Number(gpsRows[0].longitud),
+              radio_metros: Number(gpsRows[0].radio_metros),
+            };
+          }
+          sesionPuesto = {
+            puesto_id: s.puesto_id,
+            cliente_id: s.cliente_id,
+            cliente_nombre: s.cliente_nombre,
+            puesto_nombre: s.puesto_nombre,
+            horario: s.horario,
+            hora_entrada: s.hora_entrada,
+            hora_salida: s.hora_salida,
+            turno: s.turno,
+            jornada: s.jornada,
+            gps,
+          };
+        }
+      }
+    }
+    // Si el frontend pidió "agregar agente al puesto" (mandó ambos campos) pero
+    // la sesión no validó, NO caemos al flujo normal en silencio (eso fichaba al
+    // agente en SU propio puesto y "no aparecía" en este). Cortamos explícito.
+    if (sesion_fichaje_id && tracking_token_sesion && !sesionPuesto) {
+      return res.status(403).json({
+        error: "sesion_invalida",
+        mensaje: "La sesión del puesto no es válida o ya se cerró. Escaneá de nuevo el carnet del primer agente.",
+      });
+    }
+
     // 3. Resolver servicio del día
     //    Prioridad 1: puesto fijo (puesto_titulares activo + puesto activo)
     let servicio: {
@@ -994,6 +1068,37 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
       }
     }
 
+    // Override por "agregar agente al puesto": forzamos el puesto de la sesión.
+    // Supervisores y jefes no fichan turno aunque se intente agregarlos.
+    if (sesionPuesto) {
+      const tp = String(agente.tipo_personal || "");
+      if (tp === "supervisor" || tp === "jefe_servicio") {
+        return res.status(200).json({
+          ok: true,
+          es_supervisor: true,
+          rol: tp,
+          mensaje: tp === "supervisor"
+            ? "Sos supervisor. Abrí tu agenda de supervisión."
+            : "Sos jefe de servicio. Abrí tu agenda de supervisión.",
+          agente,
+        });
+      }
+      servicio = {
+        tipo: "puesto",
+        puesto_id: sesionPuesto.puesto_id,
+        cliente_id: sesionPuesto.cliente_id,
+        cliente_nombre: sesionPuesto.cliente_nombre,
+        slot_numero: null,
+        titulo: sesionPuesto.puesto_nombre,
+        horario: sesionPuesto.horario,
+        hora_entrada: sesionPuesto.hora_entrada,
+        hora_salida: sesionPuesto.hora_salida,
+        turno: sesionPuesto.turno,
+        jornada: sesionPuesto.jornada,
+        gps_referencia: sesionPuesto.gps,
+      };
+    }
+
     if (!servicio) {
       // Supervisores y jefes de servicio sin puesto/custodia asignado NO son un error:
       // su flujo operativo es la agenda de supervisión (/agente/supervision), no el
@@ -1019,7 +1124,8 @@ agenteFichajeRouter.post("/agente/iniciar-turno", async (req, res) => {
     }
 
     // 3b. Modo kiosco: el agente debe pertenecer al puesto/cliente vinculado al teléfono
-    if (kioscoTipo === "puesto" && kioscoPuestoId != null && servicio.puesto_id !== kioscoPuestoId) {
+    // (se salta cuando es "agregar agente al puesto", que ya forzó el puesto de la sesión).
+    if (!sesionPuesto && kioscoTipo === "puesto" && kioscoPuestoId != null && servicio.puesto_id !== kioscoPuestoId) {
       return res.status(403).json({
         error: "puesto_no_coincide",
         mensaje: `${agente.nombre} no pertenece a este puesto. Verificá que estás en el teléfono correcto.`,
