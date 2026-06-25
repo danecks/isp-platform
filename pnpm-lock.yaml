@@ -216,6 +216,12 @@ importers:
 
   artifacts/isp-web:
     dependencies:
+      '@capacitor/core':
+        specifier: ^6.2.1
+        version: 6.2.1
+      '@capgo/capacitor-updater':
+        specifier: ^6.6.0
+        version: 6.45.10(@capacitor/core@6.2.1)
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
