@@ -80,6 +80,8 @@ jobs:
 
       - name: Empaquetar OTA
         env:
+          PORT: "5173"
+          BASE_PATH: "/"
           OTA_VERSION: ${{ steps.ver.outputs.name }}
           OTA_BASE_URL: "https://ispsa.net/app-updates"
           OTA_NOTES: ${{ inputs.notes }}
