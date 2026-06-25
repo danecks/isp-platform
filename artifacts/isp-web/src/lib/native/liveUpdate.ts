@@ -154,8 +154,7 @@ export async function getAppVersionInfo(): Promise<AppVersionInfo> {
     return { native: null, bundle: null, bundleId: null, builtin: false };
   }
   try {
-    const mod = "@capgo/capacitor-updater";
-    const { CapacitorUpdater } = await import(/* @vite-ignore */ mod);
+    const { CapacitorUpdater } = await import("@capgo/capacitor-updater");
     const current = await CapacitorUpdater.current();
     const bundle = current?.bundle ?? null;
     return {
@@ -180,8 +179,7 @@ export async function checkForUpdate(
 
   let result: OtaCheckResult;
   try {
-    const mod = "@capgo/capacitor-updater";
-    const { CapacitorUpdater } = await import(/* @vite-ignore */ mod);
+    const { CapacitorUpdater } = await import("@capgo/capacitor-updater");
     const manifest = await fetchManifest();
     if (!manifest) {
       result = { status: "error", message: "No se pudo leer el manifest OTA" };
@@ -228,8 +226,7 @@ export function initLiveUpdate(onResult?: (r: OtaCheckResult) => void): void {
   if (!isNative()) return;
   void (async () => {
     try {
-      const mod = "@capgo/capacitor-updater";
-      const { CapacitorUpdater } = await import(/* @vite-ignore */ mod);
+      const { CapacitorUpdater } = await import("@capgo/capacitor-updater");
       try {
         await CapacitorUpdater.notifyAppReady();
       } catch {
@@ -322,8 +319,7 @@ export async function applyUpdateNow(
 ): Promise<OtaApplyResult> {
   if (!isNative()) return { status: "unsupported" };
   try {
-    const mod = "@capgo/capacitor-updater";
-    const { CapacitorUpdater } = await import(/* @vite-ignore */ mod);
+    const { CapacitorUpdater } = await import("@capgo/capacitor-updater");
 
     // 1) ¿Ya tenemos un bundle descargado esperando?
     const pending = getPendingBundle();
