@@ -50,6 +50,99 @@ async function contarCoberturaPuestos(fechaISO: string) {
   };
 }
 
+// Resumen del día (cobertura de puestos + ausencias + custodia) para una fecha
+// dada. Reutilizado por el cierre del día activo y por el cierre retroactivo de
+// una fecha pasada (que antes pasaba todo en ceros al modal). Es la MISMA lógica
+// que usa el pizarrón en vivo para contar cobertura.
+async function computarResumenDia(fechaISO: string) {
+  const {
+    totalPuestos, cubiertos, descubiertos, cubiertosPorTitular, cubiertosPorRelevo,
+  } = await contarCoberturaPuestos(fechaISO);
+
+  const { rows: movHoy } = await pool.query(`
+    SELECT tipo, motivo, COUNT(*) AS cantidad
+    FROM movimientos_operativos
+    WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') = $1
+    GROUP BY tipo, motivo
+  `, [fechaISO]);
+  const ausencias = movHoy
+    .filter((m: any) => m.motivo === 'falta')
+    .reduce((acc: number, m: any) => acc + parseInt(m.cantidad), 0);
+
+  let totalCustodiaSlots = 0;
+  let custodiaCubiertos = 0;
+  try {
+    const diaSemCierre = new Date(fechaISO + 'T12:00:00Z').getUTCDay();
+    const { rows: custCl } = await pool.query(`
+      SELECT c.id, COALESCE(cfs.cantidad_agentes, 0) AS fuerza
+      FROM clients c
+      LEFT JOIN custodia_fuerza_semanal cfs ON cfs.cliente_id = c.id AND cfs.dia_semana = $1
+      WHERE c.estado = 'activo' AND c.tipo_servicio IN ('custodia','mixto')
+    `, [diaSemCierre]);
+
+    for (const cl of custCl) {
+      const f = Number(cl.fuerza) || 0;
+      if (f === 0) continue;
+      totalCustodiaSlots += f;
+
+      const { rows: titR } = await pool.query(
+        `SELECT slot_numero, employee_id FROM custodia_titulares WHERE cliente_id = $1 AND activo = TRUE`, [cl.id]
+      );
+      const titMap = new Map<number, number>();
+      for (const t of titR) titMap.set(Number(t.slot_numero), Number(t.employee_id));
+
+      const { rows: asigR } = await pool.query(
+        `SELECT slot_numero FROM custodia_asignacion_diaria WHERE cliente_id = $1 AND fecha = $2::date`, [cl.id, fechaISO]
+      );
+      const asigSet = new Set(asigR.map((a: any) => Number(a.slot_numero)));
+
+      const { rows: faltR } = await pool.query(
+        `SELECT employee_id FROM eventos_rrhh WHERE tipo_evento = 'falta' AND DATE(fecha) = $1::date AND estado != 'anulado'`, [fechaISO]
+      );
+      const faltSet = new Set(faltR.map((r: any) => Number(r.employee_id)));
+
+      for (let i = 1; i <= f; i++) {
+        const titEmp = titMap.get(i);
+        if (asigSet.has(i)) { custodiaCubiertos++; }
+        else if (titEmp && !faltSet.has(titEmp)) { custodiaCubiertos++; }
+      }
+    }
+  } catch (custErr) {
+    logger.warn({ custErr }, "resumen-dia: error contando custodia (no bloqueante)");
+  }
+  const custodiaDescubiertos = totalCustodiaSlots - custodiaCubiertos;
+
+  return {
+    totalPuestos,
+    cubiertos,
+    descubiertos,
+    cubiertosPorTitular,
+    cubiertosPorRelevo,
+    ausencias,
+    horasExtra: 0,
+    totalCustodiaSlots,
+    custodiaCubiertos,
+    custodiaDescubiertos,
+  };
+}
+
+// Resumen del día para una fecha arbitraria (?fecha=YYYY-MM-DD). Lo usa el modal
+// de "Cerrar día operativo" para mostrar números reales también en cierres
+// retroactivos (antes salía todo en ceros).
+router.get("/operaciones/cierre-resumen", async (req, res) => {
+  try {
+    const fechaParam = req.query.fecha as string | undefined;
+    if (!fechaParam || !/^\d{4}-\d{2}-\d{2}$/.test(fechaParam)) {
+      return res.status(400).json({ error: "fecha inválida (se espera YYYY-MM-DD)" });
+    }
+    const resumen = await computarResumenDia(fechaParam);
+    res.json(resumen);
+  } catch (err) {
+    logger.error({ err }, "GET /operaciones/cierre-resumen error");
+    res.status(500).json({ error: "Error al calcular el resumen del día" });
+  }
+});
+
 router.get("/operaciones/cierre-hoy", async (req, res) => {
   try {
     const { fechaActivaISO, fechaActivaStr, esFechaFutura, cierreDeHoy } = await calcFechaActiva();
@@ -61,20 +154,8 @@ router.get("/operaciones/cierre-hoy", async (req, res) => {
     );
     const cierreActiva = cierreActivaRows[0] ?? null;
 
-    const {
-      totalPuestos, cubiertos, descubiertos, cubiertosPorTitular, cubiertosPorRelevo,
-    } = await contarCoberturaPuestos(fechaActivaISO);
-
-    const { rows: movHoy } = await pool.query(`
-      SELECT tipo, motivo, COUNT(*) AS cantidad
-      FROM movimientos_operativos
-      WHERE DATE(fecha_hora AT TIME ZONE 'America/Guatemala') = $1
-      GROUP BY tipo, motivo
-    `, [fechaActivaISO]);
-
-    const ausencias = movHoy
-      .filter((m: any) => m.motivo === 'falta')
-      .reduce((acc: number, m: any) => acc + parseInt(m.cantidad), 0);
+    const resumen = await computarResumenDia(fechaActivaISO);
+    const { descubiertos, custodiaDescubiertos } = resumen;
 
     const { rows: relevosRows } = await pool.query(`
       SELECT COUNT(*) AS cantidad FROM movimientos_operativos
@@ -82,50 +163,6 @@ router.get("/operaciones/cierre-hoy", async (req, res) => {
         AND tipo = 'sustitucion' AND (motivo IS NULL OR motivo = '')
     `, [fechaActivaISO]);
     const relevossinMotivo = parseInt(relevosRows[0]?.cantidad ?? '0');
-
-
-    let totalCustodiaSlots = 0;
-    let custodiaCubiertos = 0;
-    try {
-      const diaSemCierre = new Date(fechaActivaISO + 'T12:00:00Z').getUTCDay();
-      const { rows: custCl } = await pool.query(`
-        SELECT c.id, COALESCE(cfs.cantidad_agentes, 0) AS fuerza
-        FROM clients c
-        LEFT JOIN custodia_fuerza_semanal cfs ON cfs.cliente_id = c.id AND cfs.dia_semana = $1
-        WHERE c.estado = 'activo' AND c.tipo_servicio IN ('custodia','mixto')
-      `, [diaSemCierre]);
-
-      for (const cl of custCl) {
-        const f = Number(cl.fuerza) || 0;
-        if (f === 0) continue;
-        totalCustodiaSlots += f;
-
-        const { rows: titR } = await pool.query(
-          `SELECT slot_numero, employee_id FROM custodia_titulares WHERE cliente_id = $1 AND activo = TRUE`, [cl.id]
-        );
-        const titMap = new Map<number, number>();
-        for (const t of titR) titMap.set(Number(t.slot_numero), Number(t.employee_id));
-
-        const { rows: asigR } = await pool.query(
-          `SELECT slot_numero FROM custodia_asignacion_diaria WHERE cliente_id = $1 AND fecha = $2::date`, [cl.id, fechaActivaISO]
-        );
-        const asigSet = new Set(asigR.map((a: any) => Number(a.slot_numero)));
-
-        const { rows: faltR } = await pool.query(
-          `SELECT employee_id FROM eventos_rrhh WHERE tipo_evento = 'falta' AND DATE(fecha) = $1::date AND estado != 'anulado'`, [fechaActivaISO]
-        );
-        const faltSet = new Set(faltR.map((r: any) => Number(r.employee_id)));
-
-        for (let i = 1; i <= f; i++) {
-          const titEmp = titMap.get(i);
-          if (asigSet.has(i)) { custodiaCubiertos++; }
-          else if (titEmp && !faltSet.has(titEmp)) { custodiaCubiertos++; }
-        }
-      }
-    } catch (custErr) {
-      logger.warn({ custErr }, "cierre-hoy: error contando custodia (no bloqueante)");
-    }
-    const custodiaDescubiertos = totalCustodiaSlots - custodiaCubiertos;
 
     const advertencias: string[] = [];
     if (descubiertos > 0)     advertencias.push(`${descubiertos} puesto${descubiertos !== 1 ? 's' : ''} descubierto${descubiertos !== 1 ? 's' : ''}`);
@@ -180,18 +217,7 @@ router.get("/operaciones/cierre-hoy", async (req, res) => {
       fechaActivaStr,
       esFechaFutura,
       cierreDeHoy:    cierreDeHoy ?? null,
-      resumen: {
-        totalPuestos,
-        cubiertos,
-        descubiertos,
-        cubiertosPorTitular,
-        cubiertosPorRelevo,
-        ausencias,
-        horasExtra: 0,
-        totalCustodiaSlots,
-        custodiaCubiertos,
-        custodiaDescubiertos,
-      },
+      resumen,
       advertencias,
       diasPendientesCierre,
       diasCerrados,

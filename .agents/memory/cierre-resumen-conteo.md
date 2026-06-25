@@ -41,3 +41,15 @@ los conteos de `snapshotPuestos`.
 Se quitó la advertencia "puestos cubiertos sin tramos de cobertura registrados":
 se basaba en `po.estado='cubierto'` legacy y daba falsas alarmas. En el modelo de
 turnos un titular normal no requiere tramos y los relevos YA son los segmentos.
+
+## El modal de cierre debe pedir el resumen POR FECHA
+El resumen vive en un helper único `computarResumenDia(fechaISO)` y hay un endpoint
+`GET /operaciones/cierre-resumen?fecha=YYYY-MM-DD` (mismo módulo/sesión que el resto
+de operaciones, misma validación ISO que `preview-custodias`). `ModalCierre.tsx`
+DEBE hacer fetch a ese endpoint y pintar `resumenDia`, NO el prop `resumen`.
+
+**Why:** `OperacionesModales.tsx` arma los `<ModalCierre>` retroactivos con `resumen`
+hardcodeado en ceros (no tenía de dónde sacar números por fecha). Resultado: el
+modal "Cerrar día operativo" de un día pasado mostraba TODO EN CEROS aunque el
+pizarrón mostrara 294 cubiertos / 21 descubiertos. El prop solo sirve como valor
+inicial del día activo; el valor real siempre llega del endpoint por fecha.

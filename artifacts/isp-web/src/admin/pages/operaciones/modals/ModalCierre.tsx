@@ -27,6 +27,7 @@ export function ModalCierre({
   const [loadingPreview, setLoadingPreview] = useState(true);
   const [previewArmas,   setPreviewArmas]   = useState<PreviewCustodia[]>([]);
   const [previewVeh,     setPreviewVeh]     = useState<PreviewCustodia[]>([]);
+  const [resumenDia,     setResumenDia]     = useState<CierreResumen>(resumen);
   const valido = texto === esperado;
   const totalCambios = previewArmas.length + previewVeh.length;
 
@@ -41,6 +42,18 @@ export function ModalCierre({
       })
       .catch(() => {})
       .finally(() => setLoadingPreview(false));
+    return () => ctrl.abort();
+  }, [fechaIso]);
+
+  // El resumen del día se calcula por fecha en el backend. Así también un cierre
+  // retroactivo (fecha pasada) muestra números reales en vez de todo en ceros.
+  useEffect(() => {
+    if (!fechaIso) { setResumenDia(resumen); return; }
+    const ctrl = new AbortController();
+    fetch(`${API_BASE}/operaciones/cierre-resumen?fecha=${fechaIso}`, { signal: ctrl.signal, headers: { "x-isp-session": getSession() } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setResumenDia(d); })
+      .catch(() => {});
     return () => ctrl.abort();
   }, [fechaIso]);
 
@@ -72,16 +85,16 @@ export function ModalCierre({
             <p className="text-[11px] text-white/40 uppercase tracking-widest mb-2 font-semibold">Resumen del día</p>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: "Puestos totales",    value: resumen.totalPuestos,        color: "text-white" },
-                { label: "Cubiertos titular",  value: resumen.cubiertosPorTitular, color: "text-green-400" },
-                { label: "Cubiertos relevo",   value: resumen.cubiertosPorRelevo,  color: "text-yellow-400" },
-                { label: "Descubiertos",        value: resumen.descubiertos,        color: resumen.descubiertos > 0 ? "text-red-400" : "text-white/30" },
-                { label: "Ausencias",           value: resumen.ausencias,           color: resumen.ausencias > 0 ? "text-orange-400" : "text-white/30" },
-                { label: "Horas extra",         value: resumen.horasExtra,          color: "text-blue-400" },
-                ...((resumen as any).totalCustodiaSlots > 0 ? [
-                  { label: "Custodia slots", value: (resumen as any).totalCustodiaSlots, color: "text-amber-400" },
-                  { label: "Custodia cubiertos", value: (resumen as any).custodiaCubiertos ?? 0, color: "text-amber-300" },
-                  { label: "Custodia desc.", value: (resumen as any).custodiaDescubiertos ?? 0, color: ((resumen as any).custodiaDescubiertos ?? 0) > 0 ? "text-red-400" : "text-white/30" },
+                { label: "Puestos totales",    value: resumenDia.totalPuestos,        color: "text-white" },
+                { label: "Cubiertos titular",  value: resumenDia.cubiertosPorTitular, color: "text-green-400" },
+                { label: "Cubiertos relevo",   value: resumenDia.cubiertosPorRelevo,  color: "text-yellow-400" },
+                { label: "Descubiertos",        value: resumenDia.descubiertos,        color: resumenDia.descubiertos > 0 ? "text-red-400" : "text-white/30" },
+                { label: "Ausencias",           value: resumenDia.ausencias,           color: resumenDia.ausencias > 0 ? "text-orange-400" : "text-white/30" },
+                { label: "Horas extra",         value: resumenDia.horasExtra,          color: "text-blue-400" },
+                ...((resumenDia as any).totalCustodiaSlots > 0 ? [
+                  { label: "Custodia slots", value: (resumenDia as any).totalCustodiaSlots, color: "text-amber-400" },
+                  { label: "Custodia cubiertos", value: (resumenDia as any).custodiaCubiertos ?? 0, color: "text-amber-300" },
+                  { label: "Custodia desc.", value: (resumenDia as any).custodiaDescubiertos ?? 0, color: ((resumenDia as any).custodiaDescubiertos ?? 0) > 0 ? "text-red-400" : "text-white/30" },
                 ] : []),
               ].map(({ label, value, color }) => (
                 <div key={label} className="bg-[#0c1929] border border-white/6 rounded-xl p-2.5 text-center">
