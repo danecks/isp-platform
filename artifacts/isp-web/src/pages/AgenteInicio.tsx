@@ -2650,9 +2650,16 @@ export default function AgenteInicio() {
         )}
       </main>
 
-      <footer className="px-4 py-3 text-center text-[11px] text-slate-600 border-t border-slate-900 space-y-1">
+      <footer
+        className="px-4 pt-3 text-center text-[11px] text-slate-600 border-t border-slate-900 space-y-1"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
+      >
         <div>ISP, S.A. · Investigaciones y Seguridad Profesional</div>
-        {verApp && <div className="text-slate-400 font-medium">{verApp}</div>}
+        {verApp && (
+          <div className="text-slate-200 font-semibold text-xs" data-testid="text-app-version">
+            {verApp}
+          </div>
+        )}
         <div>
           <a
             href="/ajustes/version"
