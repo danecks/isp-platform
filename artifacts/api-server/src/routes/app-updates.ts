@@ -83,6 +83,50 @@ async function handleManifest(_req: Request, res: Response): Promise<void> {
 }
 
 /**
+ * Endpoint de actualización para `@capgo/capacitor-updater` con
+ * `autoUpdate: true`. A diferencia del GET (que el cliente JS usa para leer
+ * el manifest), el plugin nativo consulta la `updateUrl` con un **POST** que
+ * lleva la info del dispositivo y espera una respuesta `{version, url,
+ * checksum}`. Como la URL del manifest ya está bakeada en los APK instalados,
+ * responder al POST aquí hace que esos teléfonos se actualicen solos SIN
+ * reinstalar.
+ *
+ * Respuestas:
+ *  - Update disponible:      { version, url, checksum }
+ *  - Ya en la última (o sin manifest): { version?, message } sin `url`, para
+ *    que capgo no re-descargue. Siempre HTTP 200: capgo trata != 200 como
+ *    error de red y no como "sin novedades".
+ */
+async function handleCapgoCheck(req: Request, res: Response): Promise<void> {
+  res.set("Cache-Control", "no-store");
+  try {
+    const m = (await readManifest()) as
+      | { version?: string; url?: string; checksum?: string }
+      | null;
+    if (!m || typeof m.version !== "string" || typeof m.url !== "string") {
+      res.status(200).json({ message: "no update available" });
+      return;
+    }
+    const body = (req.body ?? {}) as { version_name?: unknown; version_build?: unknown };
+    const raw = body.version_name ?? body.version_build;
+    const current =
+      typeof raw === "string" || typeof raw === "number" ? String(raw) : undefined;
+    if (current && current === m.version) {
+      res.status(200).json({ version: m.version, message: "no new version available" });
+      return;
+    }
+    res.status(200).json({
+      version: m.version,
+      url: m.url,
+      ...(typeof m.checksum === "string" ? { checksum: m.checksum } : {}),
+    });
+  } catch (err) {
+    logger.error({ err }, "[OTA] error en check capgo (POST)");
+    res.status(200).json({ message: "error" });
+  }
+}
+
+/**
  * Resuelve el nombre del bundle a un objeto de Object Storage y, si existe,
  * devuelve el `file` junto con los metadatos (tamaño + etag) necesarios para
  * responder HEAD y GET con `Content-Length` correcto.
@@ -160,6 +204,7 @@ async function handleBundle(req: Request, res: Response): Promise<void> {
 const router: IRouter = Router();
 router.get("/app-updates/manifest.json", handleManifest);
 router.head("/app-updates/manifest.json", handleManifest);
+router.post("/app-updates/manifest.json", handleCapgoCheck);
 router.head("/app-updates/:bundle", handleBundleHead);
 router.get("/app-updates/:bundle", handleBundle);
 
@@ -168,6 +213,7 @@ router.get("/app-updates/:bundle", handleBundle);
 export const appUpdatesRootRouter: IRouter = Router();
 appUpdatesRootRouter.get("/manifest.json", handleManifest);
 appUpdatesRootRouter.head("/manifest.json", handleManifest);
+appUpdatesRootRouter.post("/manifest.json", handleCapgoCheck);
 appUpdatesRootRouter.head("/:bundle", handleBundleHead);
 appUpdatesRootRouter.get("/:bundle", handleBundle);
 
