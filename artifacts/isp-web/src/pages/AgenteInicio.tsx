@@ -157,17 +157,20 @@ export default function AgenteInicio() {
   const [linternaSoportada, setLinternaSoportada] = useState(false);
 
   // Versión visible (OTA/APK) para que el personal pueda confirmar si su
-  // celular está actualizado. En navegador queda null y no se muestra.
-  const [verApp, setVerApp] = useState<string | null>(null);
+  // celular está actualizado. Siempre muestra algo: la versión del bundle/APK
+  // en la app, o la versión de build como respaldo en navegador.
+  const verBuildFallback =
+    typeof __BUILD_VERSION__ !== "undefined" ? `Build ${__BUILD_VERSION__}` : "Versión —";
+  const [verApp, setVerApp] = useState<string>(verBuildFallback);
   useEffect(() => {
     let vivo = true;
     void getAppVersionInfo().then((v) => {
       if (!vivo) return;
       const ver = v.bundle && v.bundle !== "builtin" ? v.bundle : v.native;
-      setVerApp(ver ? `Versión ${ver}` : null);
+      setVerApp(ver ? `Versión ${ver}` : verBuildFallback);
     });
     return () => { vivo = false; };
-  }, []);
+  }, [verBuildFallback]);
 
   // Modo kiosco: si hay credenciales de dispositivo en localStorage
   const [device] = useState<DeviceCreds | null>(() => leerDeviceCreds());
@@ -1480,11 +1483,19 @@ export default function AgenteInicio() {
             <div className="text-[11px] text-slate-400">Inicio de turno</div>
           )}
         </div>
-        {esKiosco && (
-          <span className="text-[10px] uppercase tracking-wide bg-blue-600/20 text-blue-300 px-2 py-1 rounded border border-blue-600/40">
-            Puesto
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          {esKiosco && (
+            <span className="text-[10px] uppercase tracking-wide bg-blue-600/20 text-blue-300 px-2 py-1 rounded border border-blue-600/40">
+              Puesto
+            </span>
+          )}
+          <span
+            className="text-[10px] font-semibold text-slate-300 bg-slate-800/70 px-2 py-0.5 rounded border border-slate-700"
+            data-testid="text-app-version-header"
+          >
+            {verApp}
           </span>
-        )}
+        </div>
       </header>
 
       <main className="flex-1 px-4 py-5 max-w-md mx-auto w-full">
